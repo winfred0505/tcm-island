@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="晨光">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>中藥島 - 跟著藥局走訪中藥群島</title>
+  <meta name="description" content="長庚中醫藥劑部中藥局3D微縮群島：層疊台地、生活感島民、特色地標、智慧檢核與用藥安全導覽。">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌿</text></svg>">
+  <!-- Google Fonts: Noto Sans TC -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Import map for Three.js -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- file:// 協議直接點開時的安全提示橫幅 -->
+  <div id="file-protocol-warning" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(22, 34, 46, 0.96); z-index:99999; color:#fff; display:none; flex-direction:column; align-items:center; justify-content:center; padding:30px; text-align:center;">
+    <div style="max-width:540px; background:#202f3d; padding:32px; border-radius:16px; border:2px solid #2f7a6b; box-shadow:0 12px 36px rgba(0,0,0,0.4);">
+      <div style="font-size:48px; margin-bottom:12px;">🌿</div>
+      <h2 style="font-size:22px; color:#48e6c2; margin-bottom:12px;">歡迎來到「中藥島」！</h2>
+      <p style="font-size:15px; line-height:1.7; color:#e0e8ef; margin-bottom:20px;">
+        您目前是直接按兩下開啟檔案（<code>file://</code> 協議）。現代瀏覽器（Chrome、Edge）基於安全隱私限制，禁止直接在檔案模式下載入 3D 模組與資料。
+      </p>
+      <div style="background:#16222e; padding:16px; border-radius:10px; margin-bottom:24px; text-align:left;">
+        <p style="font-weight:700; color:#d9792f; margin-bottom:6px;">🚀 正確開啟方式（任選一種）：</p>
+        <p style="font-size:14px; color:#c0cfda; margin-bottom:6px;">1. 點擊下方按鈕直接進入（本機伺服器已在背景為您啟動）：</p>
+        <div style="text-align:center; margin:10px 0;">
+          <a href="http://localhost:8080/" style="display:inline-block; background:#2f7a6b; color:#fff; padding:10px 24px; border-radius:8px; font-weight:700; text-decoration:none; font-size:15px;">👉 點此開啟中藥島 (http://localhost:8080)</a>
+        </div>
+        <p style="font-size:14px; color:#c0cfda;">2. 或在資料夾中按兩下執行 <strong>【點我啟動中藥島.bat】</strong></p>
+      </div>
+    </div>
+  </div>
+  <script>
+    if (window.location.protocol === 'file:') {
+      document.getElementById('file-protocol-warning').style.display = 'flex';
+    }
+  </script>
+
+  <!-- 3D 畫布容器 -->
+  <div id="webgl-container" tabindex="0" aria-label="3D中藥群島互動畫布"></div>
+
+  <!-- 3D 浮動標籤圖層 (HTML 投影) -->
+  <div id="island-labels-layer" aria-hidden="true"></div>
+
+  <!-- 對話泡泡圖層 -->
+  <div id="speech-bubble-layer"></div>
+
+  <!-- 頂部導覽列 -->
+  <header class="top-nav">
+    <div class="brand-badge" id="btn-brand-home" title="回到中央島 / 旅客服務中心" role="button" tabindex="0">
+      <div class="brand-icon">🌿</div>
+      <div class="brand-text">
+        <h1>中藥島</h1>
+        <p>跟著藥局走訪中藥群島</p>
+      </div>
+    </div>
+
+    <div class="nav-actions">
+      <!-- 即時時鐘與天色 -->
+      <div class="clock-chip" id="clock-display" title="目前島嶼天色與時鐘">
+        <span id="clock-icon">☀️</span>
+        <span id="clock-time">白天 10:26</span>
+      </div>
+
+      <!-- 三組底色切換器 -->
+      <div class="theme-switcher" role="group" aria-label="底色主題切換">
+        <button class="theme-pill" data-theme="晨光" title="晨光主題 (暖白)">
+          <span class="theme-swatch" style="background:#f6f0e4;"></span>
+          <span class="name">晨光</span>
+        </button>
+        <button class="theme-pill" data-theme="海霧" title="海霧主題 (涼青)">
+          <span class="theme-swatch" style="background:#dcebee;"></span>
+          <span class="name">海霧</span>
+        </button>
+        <button class="theme-pill" data-theme="夜海" title="夜海主題 (深藍)">
+          <span class="theme-swatch" style="background:#16222e;"></span>
+          <span class="name">夜海</span>
+        </button>
+        <button class="theme-pill active" data-theme="auto" title="依日夜時段自動切換底色">
+          <span>🌅</span>
+          <span class="name">自動</span>
+        </button>
+      </div>
+
+      <!-- 減少動態按鈕 -->
+      <button class="btn btn-icon-only" id="btn-reduced-motion" title="切換減少動態 (暫停動畫，防暈眩)" aria-label="切換減少動態">
+        <span>🏃</span>
+      </button>
+
+      <!-- 重播開場電影史詩運鏡 -->
+      <button class="btn btn-icon-only" id="btn-replay-cinema" title="重播電影史詩開場運鏡" aria-label="重播開場運鏡">
+        <span>🎬</span>
+      </button>
+
+      <!-- 回到全景按鈕 -->
+      <button class="btn btn-primary" id="btn-reset-camera" title="鏡頭重置回到群島全景">
+        <span>🗺️</span>
+        <span class="btn-label">回到全景</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 底部功能按鈕列 -->
+  <nav class="bottom-bar" aria-label="主要功能選單">
+    <button class="btn" id="btn-open-search">
+      <span>🔍</span>
+      <span class="btn-label">搜尋</span>
+    </button>
+    <button class="btn" id="btn-open-list">
+      <span>📋</span>
+      <span class="btn-label">地點清單</span>
+    </button>
+    <button class="btn btn-accent" id="btn-open-guide">
+      <span>💬</span>
+      <span class="btn-label">小嚮導問答</span>
+    </button>
+    <button class="btn" id="btn-open-backpack">
+      <span>🎒</span>
+      <span class="btn-label">背包</span>
+      <span class="backpack-badge" id="backpack-count">3</span>
+    </button>
+    <button class="btn" id="btn-open-passport">
+      <span>🛂</span>
+      <span class="btn-label">探索護照</span>
+      <span class="backpack-badge" id="passport-count">0/5</span>
+    </button>
+    <button class="btn" id="btn-open-quiz">
+      <span>📝</span>
+      <span class="btn-label">小測驗</span>
+    </button>
+    <button class="btn" id="btn-open-savecode">
+      <span>🔑</span>
+      <span class="btn-label">接關碼</span>
+    </button>
+  </nav>
+
+  <!-- 島嶼介紹側邊抽屜 / 底部面板 -->
+  <div class="drawer-backdrop" id="drawer-backdrop"></div>
+  <aside class="island-drawer" id="island-drawer" aria-labelledby="drawer-island-title" role="dialog" aria-modal="true">
+    <div class="drawer-header">
+      <div class="drawer-header-left">
+        <span class="drawer-category-tag" id="drawer-island-category">組織概況</span>
+        <h2 class="drawer-title" id="drawer-island-title">島嶼名稱</h2>
+        <span class="drawer-extra" id="drawer-island-extra">特色地標</span>
+      </div>
+      <button class="drawer-close-btn" id="btn-close-drawer" aria-label="關閉島嶼面板 (Esc)">✕</button>
+    </div>
+    <div class="drawer-body" id="drawer-body-content">
+      <!-- 內容將由 JavaScript 動態填入 -->
+    </div>
+    <div class="drawer-footer">
+      <button class="btn" id="btn-drawer-prev">‹ 上一座島</button>
+      <button class="btn btn-primary" id="btn-drawer-next">下一座島 ›</button>
+    </div>
+  </aside>
+
+  <!-- 模態視窗 1：搜尋 -->
+  <div class="modal-overlay" id="modal-search" role="dialog" aria-modal="true" aria-labelledby="modal-search-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="modal-search-title">🔍 搜尋島嶼與中藥內容</h2>
+        <button class="drawer-close-btn modal-close-btn" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="search-input-wrapper">
+          <span class="search-icon">🔍</span>
+          <input type="text" class="search-input" id="search-input-field" placeholder="輸入關鍵字（例如：50床、條碼、師資、即飲包、院區…）">
+        </div>
+        <div id="search-results-container" style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
+          <p style="color:var(--muted); text-align:center; padding:20px;">請輸入關鍵字搜尋群島景點、服務機能與安全規範</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模態視窗 2：地點清單 (無障礙全覽) -->
+  <div class="modal-overlay" id="modal-list" role="dialog" aria-modal="true" aria-labelledby="modal-list-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="modal-list-title">📋 中藥群島地點清單</h2>
+        <button class="drawer-close-btn modal-close-btn" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body" id="place-list-content">
+        <!-- 包含中央島及4座分島，不靠 3D 也可閱讀全部內容 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 模態視窗 3：小嚮導問答 (董藥師) -->
+  <div class="modal-overlay" id="modal-guide" role="dialog" aria-modal="true" aria-labelledby="modal-guide-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="modal-guide-title">💬 董藥師小嚮導</h2>
+        <button class="drawer-close-btn modal-close-btn" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="guide-history" id="guide-chat-box">
+          <div class="guide-msg">
+            <div class="guide-avatar">👨‍⚕️</div>
+            <div class="guide-bubble">
+              您好！我是中藥島小嚮導<strong>董藥師</strong>。您可以向我詢問關於長庚中藥局的任何問題，例如：「全台有哪些院區？」、「50床專責病房在哪裡？」、「調劑條碼檢核怎麼做？」、「藥師師資有哪些？」。
+            </div>
+          </div>
+        </div>
+        <div class="search-input-wrapper" style="margin-top:12px; display:flex; gap:8px;">
+          <input type="text" class="search-input" id="guide-input-field" placeholder="輸入您的中藥疑問..." style="flex:1;">
+          <button class="btn btn-primary" id="btn-guide-send">送出</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模態視窗 4：背包與交換 -->
+  <div class="modal-overlay" id="modal-backpack" role="dialog" aria-modal="true" aria-labelledby="modal-backpack-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="modal-backpack-title">🎒 探險背包與特產交易</h2>
+        <button class="drawer-close-btn modal-close-btn" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13px; color:var(--muted); line-height:1.5;">
+          在各島沙灘走走可拾取 🐚 海灘貝殼（撿取後 20 秒重生）。帶著道具尋找各島居民進行以物易物，最終可換取「長庚中藥大師護照」！
+        </p>
+        <div class="backpack-grid" id="backpack-grid-items">
+          <!-- 動態載入背包物品 -->
+        </div>
+        <div style="margin-top:14px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:12px; color:var(--muted);">純前端趣味收集小遊戲，不涉及金錢</span>
+          <button class="btn" id="btn-clear-backpack" style="color:var(--danger); font-size:12px; min-height:36px;">清空背包</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模態視窗 5：探索護照 -->
+  <div class="modal-overlay" id="modal-passport" role="dialog" aria-modal="true" aria-labelledby="modal-passport-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="modal-passport-title">🛂 中藥群島探索護照</h2>
+        <button class="drawer-close-btn modal-close-btn" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13.5px; color:var(--ink-secondary); margin-bottom:8px;">
+          登陸每座島嶼深入瞭解中藥故事，即可點亮專屬印章！完成全部探索即獲得中藥達人稱號。
+        </p>
+        <div class="passport-grid" id="passport-grid-items">
+          <!-- 印章卡清單 -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 模態視窗 6：全島小測驗 -->
+  <div class="modal-overlay" id="modal-quiz" role="dialog" aria-modal="true" aria-labelledby="modal-quiz-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="modal-quiz-title">📝 中藥島總合測驗</h2>
+        <button class="drawer-close-btn modal-close-btn" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body" id="all-quiz-container">
+        <!-- 彙整各島題目 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 模態視窗 7：接關碼 (進度存取) -->
+  <div class="modal-overlay" id="modal-savecode" role="dialog" aria-modal="true" aria-labelledby="modal-savecode-title">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2 id="modal-savecode-title">🔑 接關碼（跨裝置同步進度）</h2>
+        <button class="drawer-close-btn modal-close-btn" aria-label="關閉">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:13.5px; color:var(--ink-secondary);">
+          換電腦或手機玩嗎？複製下方的代碼，或貼上先前的代碼即可無縫延續您的探索進度與背包寶物！
+        </p>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <label style="font-weight:700; font-size:13px; color:var(--primary);">您的當前接關碼：</label>
+          <textarea id="savecode-export-text" rows="3" readonly style="width:100%; padding:10px; border-radius:var(--radius-sm); border:1px solid var(--line); font-family:monospace; font-size:12px; background:var(--surface-secondary); color:var(--ink);"></textarea>
+          <button class="btn btn-primary" id="btn-copy-savecode" style="align-self:flex-start;">📋 複製代碼</button>
+        </div>
+        <hr style="border:none; border-top:1px dashed var(--line); margin:8px 0;">
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <label style="font-weight:700; font-size:13px; color:var(--primary);">讀取接關碼：</label>
+          <input type="text" id="savecode-import-input" class="search-input" placeholder="貼上您的接關代碼...">
+          <button class="btn btn-accent" id="btn-apply-savecode" style="align-self:flex-start;">📥 載入進度</button>
+        </div>
+        <div style="margin-top:12px; text-align:right;">
+          <button class="btn" id="btn-reset-all-data" style="color:var(--danger); font-size:12px;">⚠️ 重置所有探索資料</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 電影史詩開場覆蓋層 (可點擊或按 Esc 略過) -->
+  <div id="cinema-overlay">
+    <div class="cinema-title-box">
+      <h1>中 藥 島</h1>
+      <p>跟著藥局走訪中藥群島</p>
+    </div>
+    <div class="cinema-skip-hint" id="btn-skip-cinema">點擊任意處或按 Esc 略過開場</div>
+  </div>
+
+  <!-- WebGL 降級無障礙閱讀版面 -->
+  <div id="fallback-list-container">
+    <div style="max-width:800px; margin:0 auto; background:var(--surface); padding:32px; border-radius:var(--radius-lg); box-shadow:var(--shadow-md);">
+      <h1 style="color:var(--primary); margin-bottom:8px;">🌿 中藥島 - 地方導覽全覽模式</h1>
+      <p style="color:var(--muted); margin-bottom:24px;">若您的瀏覽器不支援 WebGL 或硬體加速，您仍可在本頁完整閱讀全部中藥群島內容。</p>
+      <div id="fallback-islands-list"></div>
+    </div>
+  </div>
+
+  <!-- 應用程式邏輯主腳本 -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
