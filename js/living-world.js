@@ -9,7 +9,9 @@ export class LivingWorldManager {
     this.backpackKey = "tcm_island_backpack_v1";
     this.visitedKey = "tcm_island_visited_v1";
     this.activeNpc = null;
+    this.activeNpcMesh = null;
     this.activeAnimal = null;
+    this.activeAnimalMesh = null;
     this.dialogueIndex = 0;
     this.audioCtx = null;
 
@@ -246,6 +248,7 @@ export class LivingWorldManager {
   // 開啟 NPC 對話泡泡
   openNpcDialogue(npcData, npcMesh) {
     this.activeNpc = npcData;
+    this.activeNpcMesh = npcMesh;
     this.dialogueIndex = 0;
     this.renderBubble(npcData, npcMesh.position, "npc");
   }
@@ -253,6 +256,7 @@ export class LivingWorldManager {
   // 開啟動物對話泡泡
   openAnimalDialogue(animalData, animalMesh) {
     this.activeAnimal = animalData;
+    this.activeAnimalMesh = animalMesh;
     this.renderBubble(animalData, animalMesh.position, "animal");
   }
 
@@ -369,7 +373,9 @@ export class LivingWorldManager {
     const layer = document.getElementById("speech-bubble-layer");
     if (layer) layer.innerHTML = "";
     this.activeNpc = null;
+    this.activeNpcMesh = null;
     this.activeAnimal = null;
+    this.activeAnimalMesh = null;
   }
 
   updateBubblePosition(pos3D) {

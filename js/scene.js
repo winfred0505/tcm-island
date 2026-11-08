@@ -402,7 +402,7 @@ export class SceneManager {
     this.islandDefs.forEach(def => {
       const islandGroup = new THREE.Group();
       islandGroup.position.copy(def.pos);
-      islandGroup.userData = { id: def.id, name: def.name, order: def.order };
+      islandGroup.userData = { islandId: def.id, name: def.name, order: def.order, type: "terrain" };
 
       // 1. 建造層疊台地 (梯田結構)
       this.buildTerraceBody(islandGroup, def);
@@ -552,6 +552,7 @@ export class SceneManager {
       // 服務大廳主殿
       const mainBuilding = new THREE.Group();
       mainBuilding.position.set(0, topY, -2.5);
+      mainBuilding.userData = { type: "building", islandId: def.id };
 
       const hallBase = new THREE.Mesh(new THREE.BoxGeometry(6.5, 3.2, 5.2), wallMat);
       hallBase.castShadow = true;
@@ -576,6 +577,7 @@ export class SceneManager {
       // ⛲ 噴泉廣場 (中央島特色地景)
       const fountainGroup = new THREE.Group();
       fountainGroup.position.set(0, topY, 4.2);
+      fountainGroup.userData = { type: "building", islandId: def.id };
 
       const basin = new THREE.Mesh(new THREE.CylinderGeometry(3.2, 3.4, 0.7, 12), wallMat);
       basin.castShadow = true;
@@ -608,6 +610,7 @@ export class SceneManager {
       const stall = this.createMarketStall();
       stall.position.set(-6, 4.1, 1);
       stall.rotation.y = 0.4;
+      stall.userData = { type: "building", islandId: def.id };
       group.add(stall);
 
     } else if (def.id === "island-01") {
@@ -617,6 +620,7 @@ export class SceneManager {
       // 醫療大樓模型 (階梯雙塔)
       const hospGroup = new THREE.Group();
       hospGroup.position.set(0, topY, -1);
+      hospGroup.userData = { type: "building", islandId: def.id };
 
       const mainTower = new THREE.Mesh(new THREE.BoxGeometry(5.2, 5.5, 4.2), wallMat);
       mainTower.castShadow = true;
@@ -649,11 +653,13 @@ export class SceneManager {
       // 台灣地圖立體展示台
       const mapStand = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.6, 0.6, 12), woodMat);
       mapStand.position.set(-2.5, 2.6, 4);
+      mapStand.userData = { type: "building", islandId: def.id };
       group.add(mapStand);
 
       const mapRelief = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.2, 2.6), greenRoofMat);
       mapRelief.position.set(-2.5, 3.0, 4);
       mapRelief.rotation.y = 0.25;
+      mapRelief.userData = { type: "building", islandId: def.id };
       group.add(mapRelief);
 
     } else if (def.id === "island-02") {
@@ -663,6 +669,7 @@ export class SceneManager {
       // 代煎藥坊
       const decoctionHouse = new THREE.Group();
       decoctionHouse.position.set(-1.5, topY, -1.2);
+      decoctionHouse.userData = { type: "building", islandId: def.id };
 
       const houseBody = new THREE.Mesh(new THREE.BoxGeometry(4.8, 3.0, 4.2), wallMat);
       houseBody.castShadow = true;
@@ -699,11 +706,13 @@ export class SceneManager {
       const kiosk = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.2, 2.4), blueRoofMat);
       kiosk.position.set(3.5, topY, 1.8);
       kiosk.castShadow = true;
+      kiosk.userData = { type: "building", islandId: def.id };
       group.add(kiosk);
 
       // 水井 (水源汲取)
       const well = this.createWell();
       well.position.set(-3.5, 2.6, 3.5);
+      well.userData = { type: "building", islandId: def.id };
       group.add(well);
 
     } else if (def.id === "island-03") {
@@ -713,6 +722,7 @@ export class SceneManager {
       // 現代檢驗亭 (微型玻璃帷幕科技亭)
       const labGroup = new THREE.Group();
       labGroup.position.set(0, topY, -1.5);
+      labGroup.userData = { type: "building", islandId: def.id };
 
       const labBase = new THREE.Mesh(new THREE.BoxGeometry(4.2, 3.0, 3.8), wallMat);
       labBase.castShadow = true;
@@ -733,6 +743,7 @@ export class SceneManager {
       // 本草百草園 (🌷 彩色花田與木圍籬)
       const garden = this.createFlowerField();
       garden.position.set(0, 4.1, 2.8);
+      garden.userData = { type: "building", islandId: def.id };
       group.add(garden);
 
     } else if (def.id === "island-04") {
@@ -742,6 +753,7 @@ export class SceneManager {
       // 學堂建築
       const schoolGroup = new THREE.Group();
       schoolGroup.position.set(0, topY, -2);
+      schoolGroup.userData = { type: "building", islandId: def.id };
 
       const schoolBody = new THREE.Mesh(new THREE.BoxGeometry(5.4, 2.8, 4.0), wallMat);
       schoolBody.castShadow = true;
@@ -765,10 +777,12 @@ export class SceneManager {
       const stonePlaza = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.6, 0.25, 12), wallMat);
       stonePlaza.position.set(0, 2.5, 3.2);
       stonePlaza.receiveShadow = true;
+      stonePlaza.userData = { type: "building", islandId: def.id };
       group.add(stonePlaza);
 
       const centerTaiChi = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.28, 8), woodMat);
       centerTaiChi.position.set(0, 2.52, 3.2);
+      centerTaiChi.userData = { type: "building", islandId: def.id };
       group.add(centerTaiChi);
     }
   }
@@ -1137,6 +1151,20 @@ export class SceneManager {
         currentAnimState: 'idle'
       };
 
+      // 點擊判定強化：加入 100% 透明 Hitbox 圓柱，大幅提高使用者點選靈敏度 (transparent: true, opacity: 0 確保 Raycaster 可檢測)
+      const hitMesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.4, 1.4, 2.6, 8),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      hitMesh.position.y = 1.1;
+      hitMesh.userData = {
+        type: "npc",
+        parentNpc: npc,
+        data: resData,
+        islandId: resData.islandId
+      };
+      npc.add(hitMesh);
+
       this.scene.add(npc);
       this.npcs.push(npc);
     });
@@ -1235,6 +1263,15 @@ export class SceneManager {
 
       if (animalMesh) {
         animalMesh.userData = { type: "animal", data: aniData };
+        // 透明 Hitbox 擴大可點擊範圍
+        const aniHit = new THREE.Mesh(
+          new THREE.SphereGeometry(1.5, 6, 6),
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+        );
+        aniHit.position.y = 0.8;
+        aniHit.userData = { type: "animal", parentAnimal: animalMesh, data: aniData };
+        animalMesh.add(aniHit);
+
         this.scene.add(animalMesh);
         this.animals.push(animalMesh);
       }
@@ -1675,12 +1712,60 @@ export class SceneManager {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // 點擊畫布互動 (島嶼標籤、居民、動物、貝殼)
+    // 拖拉防誤觸判定狀態
+    this.pointerDownPos = { x: 0, y: 0, time: 0 };
+    this.isDragging = false;
+
+    this.renderer.domElement.addEventListener('pointerdown', (e) => {
+      this.pointerDownPos.x = e.clientX;
+      this.pointerDownPos.y = e.clientY;
+      this.pointerDownPos.time = performance.now();
+      this.isDragging = false;
+    });
+
+    this.renderer.domElement.addEventListener('pointermove', (e) => {
+      const dist = Math.hypot(e.clientX - this.pointerDownPos.x, e.clientY - this.pointerDownPos.y);
+      if (dist > 6) {
+        this.isDragging = true;
+      }
+
+      // 游標懸停回饋：當游標移至人物、建築、動物或貝殼時顯示 pointer 樣式
+      if (!this.isDragging && !this.isCinemaActive) {
+        this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+        this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        const hits = this.raycaster.intersectObjects(this.scene.children, true);
+        let hoverTarget = false;
+        if (hits.length > 0) {
+          for (const hit of hits) {
+            let obj = hit.object;
+            while (obj && obj !== this.scene) {
+              if (obj.userData && (obj.userData.type === "npc" || obj.userData.type === "building" || obj.userData.type === "shell" || obj.userData.type === "animal")) {
+                hoverTarget = true;
+                break;
+              }
+              obj = obj.parent;
+            }
+            if (hoverTarget) break;
+          }
+        }
+        this.renderer.domElement.style.cursor = hoverTarget ? 'pointer' : 'default';
+      }
+    });
+
+    // 點擊畫布互動 (精準判定：拖拉旋轉視角時絕不觸發，僅點擊人物或建築時開啟介紹框)
     this.renderer.domElement.addEventListener('pointerup', (e) => {
       if (this.isCinemaActive) {
         this.skipCinema();
         return;
       }
+      const dist = Math.hypot(e.clientX - this.pointerDownPos.x, e.clientY - this.pointerDownPos.y);
+      // 拖拉旋轉視角判定：移動超過 6 像素即視為拖拉視角，不觸發點擊事件
+      if (dist > 6 || this.isDragging) {
+        this.isDragging = false;
+        return;
+      }
+      this.isDragging = false;
       this.handlePointerClick(e);
     });
 
@@ -1711,20 +1796,34 @@ export class SceneManager {
         let obj = hit.object;
         while (obj && obj !== this.scene) {
           if (obj.userData) {
+            // 1. 拾取海灘貝殼
             if (obj.userData.type === "shell") {
               this.app.livingWorld.pickupShell(obj);
               return;
             }
+            // 2. 點擊島上人物 (NPC)：開啟對話泡泡 + 展開右側介紹框
             if (obj.userData.type === "npc") {
-              this.app.livingWorld.openNpcDialogue(obj.userData.data, obj);
+              const targetNpc = obj.userData.parentNpc || obj;
+              const npcData = targetNpc.userData?.data || obj.userData.data;
+              const islandId = targetNpc.userData?.islandId || npcData?.islandId;
+              if (islandId) {
+                this.focusIsland(islandId);
+              }
+              this.app.livingWorld.openNpcDialogue(npcData, targetNpc);
               return;
             }
+            // 3. 點擊島上建築 (Building / Landmark)：展開右側介紹框
+            if (obj.userData.type === "building") {
+              if (obj.userData.islandId) {
+                this.focusIsland(obj.userData.islandId);
+              }
+              return;
+            }
+            // 4. 點擊動物：開趣味對話泡泡 (不干擾右側抽屜)
             if (obj.userData.type === "animal") {
-              this.app.livingWorld.openAnimalDialogue(obj.userData.data, obj);
-              return;
-            }
-            if (obj.userData.id) {
-              this.focusIsland(obj.userData.id);
+              const targetAnimal = obj.userData.parentAnimal || obj;
+              const data = targetAnimal.userData?.data || obj.userData.data;
+              this.app.livingWorld.openAnimalDialogue(data, targetAnimal);
               return;
             }
           }
@@ -1987,6 +2086,11 @@ export class SceneManager {
 
     // 更新浮動標籤與對話泡泡位置
     this.app.ui.updateLabelsPosition();
+    if (this.app.livingWorld.activeNpc && this.app.livingWorld.activeNpcMesh) {
+      this.app.livingWorld.updateBubblePosition(this.app.livingWorld.activeNpcMesh.position);
+    } else if (this.app.livingWorld.activeAnimal && this.app.livingWorld.activeAnimalMesh) {
+      this.app.livingWorld.updateBubblePosition(this.app.livingWorld.activeAnimalMesh.position);
+    }
 
     // 渲染場景
     this.renderer.render(this.scene, this.camera);
