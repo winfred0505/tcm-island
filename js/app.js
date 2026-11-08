@@ -38,6 +38,7 @@ class TCMIslandApp {
 
       // 4. 初始化 3D 群島核心引擎 (層疊台地、精緻微縮模型、日夜光影)
       this.sceneManager = new SceneManager(this);
+      await this.sceneManager.init();
 
       // 5. 初始化 UI 管理器 (抽屜面板、搜尋、問答、測驗)
       this.ui = new UIManager(this);
@@ -62,6 +63,7 @@ class TCMIslandApp {
 // 網頁載入完成後啟動
 window.addEventListener('DOMContentLoaded', () => {
   const app = new TCMIslandApp();
+  window.app = app;
   window.__testApp = app;
   app.start();
 });

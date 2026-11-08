@@ -5,6 +5,8 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 export class SceneManager {
   constructor(app) {
@@ -41,14 +43,18 @@ export class SceneManager {
     this.seaMesh = null;
     this.seaGeometry = null;
 
+    // 模型快取與動畫混合器
+    this.gltfLoader = new GLTFLoader();
+    this.modelCache = new Map();
+    this.mixers = [];
+    this.whaleMesh = null;
+
     // Raycaster 點擊互動
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
-
-    this.init();
   }
 
-  init() {
+  async init() {
     // 1. 場景
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xf6f0e4);
@@ -86,25 +92,130 @@ export class SceneManager {
     // 5. 建立燈光與環境
     this.setupLighting();
 
-    // 6. 建立動態海面與遠景剪影
+    // 6. 預載入 3D 模型素材 (GLB)
+    await this.preloadAssets();
+
+    // 7. 建立動態海面與遠景剪影
     this.setupSeaAndEnvironment();
 
-    // 7. 建立各座層疊台地島嶼 (Terrace) 與地標
+    // 8. 建立各座層疊台地島嶼 (Terrace) 與地標
     this.buildArchipelago();
 
-    // 8. 建立生活感元素 (居民、動物、雲、鳥群、帆船、彩虹、彩旗)
+    // 9. 建立生活感元素 (居民、動物、雲、鳥群、帆船、彩虹、彩旗)
     this.setupLivingWorld();
 
-    // 9. 事件監聽
+    // 10. 事件監聽
     this.setupEventListeners();
 
-    // 10. 啟動電影史詩開場運鏡
+    // 11. 啟動電影史詩開場運鏡
     this.startCinemaIntro();
 
-    // 11. 啟動動畫主循環
+    // 12. 啟動動畫主循環
     this.clock = new THREE.Clock();
     this.animate = this.animate.bind(this);
     requestAnimationFrame(this.animate);
+  }
+
+  /**
+   * 預載入所有桌面 3D 模型素材 (GLB)
+   */
+  async preloadAssets() {
+    const urls = [
+      // 角色 (Characters)
+      'assets/models/characters/Pharmacist.glb',
+      'assets/models/characters/WardNurse.glb',
+      'assets/models/characters/WhiteCoatDoctor.glb',
+      'assets/models/characters/FoodCourier.glb',
+      'assets/models/characters/StoreManager.glb',
+      'assets/models/characters/Schoolkid.glb',
+      'assets/models/characters/GrandmaShopper.glb',
+      // 動物 (Animals)
+      'assets/models/animals/Squirrel.glb',
+      'assets/models/animals/Hare.glb',
+      'assets/models/animals/Duck.glb',
+      'assets/models/animals/Corgi.glb',
+      'assets/models/animals/Seagull.glb',
+      'assets/models/animals/Whale.glb',
+      // 自然地貌 (Nature)
+      'assets/models/nature/Cliff001.glb',
+      'assets/models/nature/Cliff002.glb',
+      'assets/models/nature/Rock001.glb',
+      'assets/models/nature/Rock002.glb',
+      'assets/models/nature/Bush001.glb',
+      'assets/models/nature/Grass001.glb',
+      'assets/models/nature/TreeMed001.glb',
+      'assets/models/nature/TreeHigh001.glb',
+      'assets/models/nature/Cloud001.glb',
+      'assets/models/nature/MountainFar001.glb'
+    ];
+
+    const loadOne = (url) => new Promise((resolve) => {
+      this.gltfLoader.load(
+        url,
+        (gltf) => {
+          this.modelCache.set(url, gltf);
+          resolve(gltf);
+        },
+        undefined,
+        (err) => {
+          console.warn(`[3D] 無法載入模型: ${url}`, err);
+          resolve(null);
+        }
+      );
+    });
+
+    await Promise.all(urls.map(loadOne));
+  }
+
+  /**
+   * 實例化與縮放已快取的 3D 模型
+   */
+  instantiateModel(url, targetHeight = null, options = {}) {
+    const gltf = this.modelCache.get(url);
+    if (!gltf) return null;
+
+    const clone = SkeletonUtils.clone(gltf.scene);
+
+    clone.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = options.castShadow !== false;
+        child.receiveShadow = options.receiveShadow !== false;
+        if (child.material) {
+          child.material.roughness = Math.max(child.material.roughness || 0.4, 0.4);
+        }
+      }
+    });
+
+    if (targetHeight) {
+      const box = new THREE.Box3().setFromObject(clone);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const scale = targetHeight / (size.y || 1);
+      clone.scale.set(scale, scale, scale);
+
+      if (options.alignBottom !== false) {
+        const scaledBox = new THREE.Box3().setFromObject(clone);
+        clone.position.y -= scaledBox.min.y;
+      }
+    }
+
+    let mixer = null;
+    const actions = {};
+    if (gltf.animations && gltf.animations.length > 0) {
+      mixer = new THREE.AnimationMixer(clone);
+      gltf.animations.forEach((clip) => {
+        actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
+        actions[clip.name] = mixer.clipAction(clip);
+      });
+      this.mixers.push(mixer);
+    }
+
+    return {
+      mesh: clone,
+      mixer,
+      actions,
+      animations: gltf.animations
+    };
   }
 
   setupLighting() {
@@ -156,26 +267,37 @@ export class SceneManager {
     this.seaMesh.receiveShadow = true;
     this.scene.add(this.seaMesh);
 
-    // 外海遠景群山剪影 (低多邊形圓環山脈)
+    // 外海遠景群山剪影 (使用 3D 素材 MountainFar001.glb 替換原先幾何圓錐)
     const mountainGroup = new THREE.Group();
     const mountainMat = new THREE.MeshLambertMaterial({
       color: 0x486470,
       flatShading: true
     });
 
-    for (let i = 0; i < 28; i++) {
-      const angle = (i / 28) * Math.PI * 2;
-      const dist = 140 + Math.sin(i * 3) * 15;
+    for (let i = 0; i < 26; i++) {
+      const angle = (i / 26) * Math.PI * 2;
+      const dist = 145 + Math.sin(i * 3) * 14;
       const x = Math.cos(angle) * dist;
       const z = Math.sin(angle) * dist;
-      const height = 18 + Math.sin(i * 2.5) * 10;
-      const width = 22 + Math.cos(i * 1.5) * 8;
+      const height = 22 + Math.sin(i * 2.5) * 12;
 
-      const coneGeo = new THREE.ConeGeometry(width, height, 5);
-      const cone = new THREE.Mesh(coneGeo, mountainMat);
-      cone.position.set(x, height / 2 - 2, z);
-      cone.rotation.y = Math.random() * Math.PI;
-      mountainGroup.add(cone);
+      const m = this.instantiateModel('assets/models/nature/MountainFar001.glb', height, {
+        castShadow: false,
+        receiveShadow: false
+      });
+
+      if (m) {
+        m.mesh.position.set(x, -1.2, z);
+        m.mesh.rotation.y = angle + Math.PI / 2 + (Math.sin(i) * 0.4);
+        mountainGroup.add(m.mesh);
+      } else {
+        const width = 22 + Math.cos(i * 1.5) * 8;
+        const coneGeo = new THREE.ConeGeometry(width, height, 5);
+        const cone = new THREE.Mesh(coneGeo, mountainMat);
+        cone.position.set(x, height / 2 - 2, z);
+        cone.rotation.y = Math.random() * Math.PI;
+        mountainGroup.add(cone);
+      }
     }
     this.scene.add(mountainGroup);
     this.distantMountains = mountainGroup;
@@ -382,6 +504,19 @@ export class SceneManager {
       cap3.receiveShadow = true;
       group.add(cap3);
     }
+
+    // 融入 3D 低多邊形岩壁裝飾 (Cliff001, Cliff002)
+    const cliffAngles = [0.35, 1.55, 2.75, 3.95, 5.15];
+    cliffAngles.forEach((a, idx) => {
+      const cliffUrl = idx % 2 === 0 ? 'assets/models/nature/Cliff001.glb' : 'assets/models/nature/Cliff002.glb';
+      const cliff = this.instantiateModel(cliffUrl, 2.2, { alignBottom: true });
+      if (cliff) {
+        const r = baseR * 0.95;
+        cliff.mesh.position.set(Math.cos(a) * r, 0.35, Math.sin(a) * r);
+        cliff.mesh.rotation.y = a + Math.PI / 2;
+        group.add(cliff.mesh);
+      }
+    });
   }
 
   displaceVertices(geo, intensity = 0.1) {
@@ -800,6 +935,43 @@ export class SceneManager {
     this.nightLights.push(pointL);
 
     group.add(lamp);
+
+    // 6. 自然景觀 3D 微縮模型 (TreeMed001, TreeHigh001, Bush001, Rock001, Grass001)
+    const tree1 = this.instantiateModel('assets/models/nature/TreeMed001.glb', 4.6, { alignBottom: true });
+    if (tree1) {
+      tree1.mesh.position.set(def.radius * 0.42, 2.45, def.radius * 0.32);
+      group.add(tree1.mesh);
+    }
+
+    const tree2 = this.instantiateModel('assets/models/nature/TreeHigh001.glb', 5.2, { alignBottom: true });
+    if (tree2) {
+      tree2.mesh.position.set(-def.radius * 0.48, 2.45, -def.radius * 0.32);
+      group.add(tree2.mesh);
+    }
+
+    const rock1 = this.instantiateModel('assets/models/nature/Rock001.glb', 0.95, { alignBottom: true });
+    if (rock1) {
+      rock1.mesh.position.set(def.radius * 0.28, 2.42, def.radius * 0.38);
+      group.add(rock1.mesh);
+    }
+
+    const rock2 = this.instantiateModel('assets/models/nature/Rock002.glb', 0.8, { alignBottom: true });
+    if (rock2) {
+      rock2.mesh.position.set(-def.radius * 0.32, 2.42, -def.radius * 0.22);
+      group.add(rock2.mesh);
+    }
+
+    const bush1 = this.instantiateModel('assets/models/nature/Bush001.glb', 0.75, { alignBottom: true });
+    if (bush1) {
+      bush1.mesh.position.set(def.radius * 0.18, 2.42, -def.radius * 0.42);
+      group.add(bush1.mesh);
+    }
+
+    const grass1 = this.instantiateModel('assets/models/nature/Grass001.glb', 0.6, { alignBottom: true });
+    if (grass1) {
+      grass1.mesh.position.set(-def.radius * 0.18, 2.42, def.radius * 0.32);
+      group.add(grass1.mesh);
+    }
   }
 
   /**
@@ -903,14 +1075,47 @@ export class SceneManager {
   createResidents() {
     if (!this.app.data || !this.app.data.residents) return;
 
+    // 依據角色設定精準對應桌面 3D 人物模型
+    const characterModelMap = {
+      "npc-01": "assets/models/characters/Pharmacist.glb",       // 董藥師 (中藥科組長)
+      "npc-02": "assets/models/characters/StoreManager.glb",     // 市集老陳 (資深掌櫃)
+      "npc-03": "assets/models/characters/FoodCourier.glb",      // 送貨員阿明 (跨島運送)
+      "npc-04": "assets/models/characters/WardNurse.glb",        // 庭瑄藥師 (行政調劑)
+      "npc-05": "assets/models/characters/WhiteCoatDoctor.glb",   // 宏偉藥師 (評鑑長)
+      "npc-06": "assets/models/characters/Pharmacist.glb",       // 家豪藥師 (病房專責)
+      "npc-07": "assets/models/characters/GrandmaShopper.glb",   // 順伯 (代煎老師傅)
+      "npc-08": "assets/models/characters/WardNurse.glb",        // 敏華藥師 (品管師)
+      "npc-09": "assets/models/characters/Pharmacist.glb",       // 佳穎藥師 (衛教專員)
+      "npc-10": "assets/models/characters/WhiteCoatDoctor.glb",   // 志遠藥師 (臨床導師)
+      "npc-11": "assets/models/characters/Schoolkid.glb"         // 宣妤同學 (實習生)
+    };
+
     this.app.data.residents.forEach(resData => {
       const islDef = this.islandDefs.find(d => d.id === resData.islandId) || this.islandDefs[0];
-      const npc = this.buildHumanoidMesh(resData);
+      const modelUrl = characterModelMap[resData.id] || "assets/models/characters/Pharmacist.glb";
+      const modelObj = this.instantiateModel(modelUrl, 1.65, { alignBottom: true });
+
+      let npc = null;
+      let mixer = null;
+      let actions = {};
+
+      if (modelObj) {
+        npc = new THREE.Group();
+        npc.add(modelObj.mesh);
+        mixer = modelObj.mixer;
+        actions = modelObj.actions;
+
+        // 預設撥放 Idle 動畫
+        const idleAction = actions['idle'] || actions['Idle'];
+        if (idleAction) idleAction.play();
+      } else {
+        npc = this.buildHumanoidMesh(resData);
+      }
 
       // 隨機在所屬島嶼的半徑內散步
       const angle = Math.random() * Math.PI * 2;
-      const r = Math.random() * (islDef.radius * 0.6);
-      const baseY = islDef.id === "island-center" ? 4.2 : 2.5;
+      const r = Math.random() * (islDef.radius * 0.52);
+      const baseY = islDef.id === "island-center" ? 4.1 : 2.5;
 
       npc.position.set(
         islDef.pos.x + Math.cos(angle) * r,
@@ -919,13 +1124,17 @@ export class SceneManager {
       );
 
       npc.userData = {
+        type: "npc",
         data: resData,
         islandId: resData.islandId,
         originPos: npc.position.clone(),
         targetPos: npc.position.clone(),
-        walkSpeed: 0.02 + Math.random() * 0.015,
+        walkSpeed: 0.02 + Math.random() * 0.012,
         pauseTimer: 0,
-        isCourier: resData.id === "npc-03"
+        isCourier: resData.id === "npc-03",
+        mixer,
+        actions,
+        currentAnimState: 'idle'
       };
 
       this.scene.add(npc);
@@ -1021,6 +1230,8 @@ export class SceneManager {
       else if (aniData.id === "dog") animalMesh = this.buildDog();
       else if (aniData.id === "turtle") animalMesh = this.buildTurtle();
       else if (aniData.id === "dolphin") animalMesh = this.buildDolphin();
+      else if (aniData.id === "whale") animalMesh = this.buildWhale();
+      else if (aniData.id === "seagull") animalMesh = this.buildSeagull();
 
       if (animalMesh) {
         animalMesh.userData = { type: "animal", data: aniData };
@@ -1031,6 +1242,14 @@ export class SceneManager {
   }
 
   buildSquirrel() {
+    const sq = this.instantiateModel('assets/models/animals/Squirrel.glb', 0.65, { alignBottom: true });
+    if (sq) {
+      const group = new THREE.Group();
+      group.add(sq.mesh);
+      group.position.set(27, 2.5, -17);
+      if (sq.actions['idle']) sq.actions['idle'].play();
+      return group;
+    }
     const group = new THREE.Group();
     const brownMat = new THREE.MeshLambertMaterial({ color: 0x99582a });
     const body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 6, 6), brownMat);
@@ -1048,6 +1267,14 @@ export class SceneManager {
   }
 
   buildRabbit() {
+    const rb = this.instantiateModel('assets/models/animals/Hare.glb', 0.7, { alignBottom: true });
+    if (rb) {
+      const group = new THREE.Group();
+      group.add(rb.mesh);
+      group.position.set(-27, 4.2, 21);
+      if (rb.actions['idle']) rb.actions['idle'].play();
+      return group;
+    }
     const group = new THREE.Group();
     const whiteMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
     const body = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), whiteMat);
@@ -1064,6 +1291,14 @@ export class SceneManager {
   }
 
   buildDuck() {
+    const dk = this.instantiateModel('assets/models/animals/Duck.glb', 0.65, { alignBottom: true });
+    if (dk) {
+      const group = new THREE.Group();
+      group.add(dk.mesh);
+      group.position.set(36, 0.4, 28);
+      if (dk.actions['idle']) dk.actions['idle'].play();
+      return group;
+    }
     const group = new THREE.Group();
     const yellowMat = new THREE.MeshLambertMaterial({ color: 0xffd166 });
     const orangeMat = new THREE.MeshLambertMaterial({ color: 0xf77f00 });
@@ -1078,6 +1313,55 @@ export class SceneManager {
     return group;
   }
 
+  buildDog() {
+    const dg = this.instantiateModel('assets/models/animals/Corgi.glb', 0.85, { alignBottom: true });
+    if (dg) {
+      const group = new THREE.Group();
+      group.add(dg.mesh);
+      group.position.set(3.5, 4.2, 5.5);
+      if (dg.actions['idle']) dg.actions['idle'].play();
+      return group;
+    }
+    const group = new THREE.Group();
+    const dogMat = new THREE.MeshLambertMaterial({ color: 0xd4a373 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.4, 0.75), dogMat);
+    body.position.y = 0.4;
+    group.add(body);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.35, 0.38), dogMat);
+    head.position.set(0, 0.68, 0.4);
+    group.add(head);
+    group.position.set(4, 4.3, 6);
+    return group;
+  }
+
+  buildWhale() {
+    const wh = this.instantiateModel('assets/models/animals/Whale.glb', 3.8, { alignBottom: false });
+    if (wh) {
+      const group = new THREE.Group();
+      group.add(wh.mesh);
+      group.position.set(74, 0.2, 0);
+      group.userData.angle = 0;
+      const act = wh.actions['idle'] || wh.actions['walk'];
+      if (act) act.play();
+      this.whaleMesh = group;
+      return group;
+    }
+    return null;
+  }
+
+  buildSeagull() {
+    const sg = this.instantiateModel('assets/models/animals/Seagull.glb', 0.65, { alignBottom: true });
+    if (sg) {
+      const group = new THREE.Group();
+      group.add(sg.mesh);
+      group.position.set(0, 26, 0);
+      const act = sg.actions['walk'] || sg.actions['idle'];
+      if (act) act.play();
+      return group;
+    }
+    return null;
+  }
+
   buildCat() {
     const group = new THREE.Group();
     const gingerMat = new THREE.MeshLambertMaterial({ color: 0xf4a261 });
@@ -1088,19 +1372,6 @@ export class SceneManager {
     head.position.set(0, 0.5, 0.22);
     group.add(head);
     group.position.set(-4, 4.3, 5);
-    return group;
-  }
-
-  buildDog() {
-    const group = new THREE.Group();
-    const dogMat = new THREE.MeshLambertMaterial({ color: 0xd4a373 });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.4, 0.75), dogMat);
-    body.position.y = 0.4;
-    group.add(body);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.35, 0.38), dogMat);
-    head.position.set(0, 0.68, 0.4);
-    group.add(head);
-    group.position.set(4, 4.3, 6);
     return group;
   }
 
@@ -1143,20 +1414,32 @@ export class SceneManager {
     });
 
     for (let c = 0; c < 10; c++) {
-      const cloud = new THREE.Group();
-      const numPuffs = 3 + Math.floor(Math.random() * 3);
-      for (let p = 0; p < numPuffs; p++) {
-        const puff = new THREE.Mesh(
-          new THREE.SphereGeometry(1.8 + Math.random() * 1.5, 6, 5),
-          cloudMat
-        );
-        puff.position.set((p - numPuffs / 2) * 2.2, Math.random() * 0.8, (Math.random() - 0.5) * 1.2);
-        cloud.add(puff);
+      const targetH = 3.5 + Math.random() * 2.5;
+      const cloudObj = this.instantiateModel('assets/models/nature/Cloud001.glb', targetH, {
+        castShadow: false,
+        receiveShadow: false
+      });
+
+      let cloud = null;
+      if (cloudObj) {
+        cloud = cloudObj.mesh;
+      } else {
+        cloud = new THREE.Group();
+        const numPuffs = 3 + Math.floor(Math.random() * 3);
+        for (let p = 0; p < numPuffs; p++) {
+          const puff = new THREE.Mesh(
+            new THREE.SphereGeometry(1.8 + Math.random() * 1.5, 6, 5),
+            cloudMat
+          );
+          puff.position.set((p - numPuffs / 2) * 2.2, Math.random() * 0.8, (Math.random() - 0.5) * 1.2);
+          cloud.add(puff);
+        }
       }
+
       const angle = (c / 10) * Math.PI * 2;
-      const radius = 65 + Math.random() * 25;
-      cloud.position.set(Math.cos(angle) * radius, 26 + Math.random() * 8, Math.sin(angle) * radius);
-      cloud.userData = { angle, radius, speed: 0.0008 + Math.random() * 0.0005 };
+      const radius = 62 + Math.random() * 26;
+      cloud.position.set(Math.cos(angle) * radius, 25 + Math.random() * 8, Math.sin(angle) * radius);
+      cloud.userData = { angle, radius, speed: 0.0006 + Math.random() * 0.0004 };
       this.scene.add(cloud);
       this.clouds.push(cloud);
     }
@@ -1166,24 +1449,30 @@ export class SceneManager {
     const birdMat = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide });
     for (let f = 0; f < 2; f++) {
       const flock = new THREE.Group();
-      for (let b = 0; b < 5; b++) {
-        const bird = new THREE.Group();
-        // V 字翅膀
-        const wingGeo = new THREE.PlaneGeometry(0.6, 0.25);
-        const w1 = new THREE.Mesh(wingGeo, birdMat);
-        w1.position.x = -0.3;
-        w1.rotation.z = 0.3;
-        bird.add(w1);
-        const w2 = new THREE.Mesh(wingGeo, birdMat);
-        w2.position.x = 0.3;
-        w2.rotation.z = -0.3;
-        bird.add(w2);
-
-        bird.position.set((b - 2) * 1.5, 0, Math.abs(b - 2) * 1.2);
+      for (let b = 0; b < 4; b++) {
+        const sg = this.instantiateModel('assets/models/animals/Seagull.glb', 0.65, { alignBottom: true });
+        let bird = null;
+        if (sg) {
+          bird = sg.mesh;
+          const flap = sg.actions['walk'] || sg.actions['idle'];
+          if (flap) flap.play();
+        } else {
+          bird = new THREE.Group();
+          const wingGeo = new THREE.PlaneGeometry(0.6, 0.25);
+          const w1 = new THREE.Mesh(wingGeo, birdMat);
+          w1.position.x = -0.3;
+          w1.rotation.z = 0.3;
+          bird.add(w1);
+          const w2 = new THREE.Mesh(wingGeo, birdMat);
+          w2.position.x = 0.3;
+          w2.rotation.z = -0.3;
+          bird.add(w2);
+        }
+        bird.position.set((b - 1.5) * 2.2, 0, Math.abs(b - 1.5) * 1.8);
         flock.add(bird);
       }
-      flock.position.set(f === 0 ? 30 : -30, 28, f === 0 ? 30 : -30);
-      flock.userData = { angle: f * Math.PI, radius: 55, speed: 0.003 };
+      flock.position.set(f === 0 ? 35 : -35, 27, f === 0 ? 35 : -35);
+      flock.userData = { angle: f * Math.PI, radius: 58, speed: 0.0028 };
       this.scene.add(flock);
       this.birds.push(flock);
     }
@@ -1515,6 +1804,11 @@ export class SceneManager {
       this.controls.update();
     }
 
+    // 更新所有骨骼動畫混合器 (人物走動、呼吸、動物動畫)
+    if (!this.isReducedMotion && this.mixers.length > 0) {
+      this.mixers.forEach(mixer => mixer.update(delta));
+    }
+
     // 動態更新 3D 海浪起伏
     if (this.seaMesh && !this.isReducedMotion) {
       const pos = this.seaMesh.geometry.attributes.position;
@@ -1588,8 +1882,23 @@ export class SceneManager {
       });
     }
 
-    // 動物動作 (海龜游動、海豚跳躍)
+    // 動物動作 (巨鯨巡航、海龜游動、海豚跳躍)
     if (!this.isReducedMotion) {
+      // 巨鯨在外海悠泳巡航
+      if (this.whaleMesh) {
+        this.whaleMesh.userData.angle += 0.0012;
+        const r = 76;
+        this.whaleMesh.position.x = Math.cos(this.whaleMesh.userData.angle) * r;
+        this.whaleMesh.position.z = Math.sin(this.whaleMesh.userData.angle) * r;
+        this.whaleMesh.position.y = 0.1 + Math.sin(time * 1.5) * 0.35;
+        this.whaleMesh.lookAt(
+          Math.cos(this.whaleMesh.userData.angle + 0.1) * r,
+          this.whaleMesh.position.y,
+          Math.sin(this.whaleMesh.userData.angle + 0.1) * r
+        );
+        this.whaleMesh.rotation.z = Math.sin(time * 2) * 0.04;
+      }
+
       this.animals.forEach(ani => {
         if (ani.userData.data.id === "turtle") {
           ani.userData.swimAngle += 0.005;
@@ -1614,9 +1923,21 @@ export class SceneManager {
           return;
         }
 
-        // 簡單路徑巡邏
+        // 散步與巡邏路徑
         if (npc.userData.pauseTimer > 0) {
           npc.userData.pauseTimer -= delta;
+
+          // 切換為 Idle 動畫
+          if (npc.userData.currentAnimState !== 'idle' && npc.userData.actions) {
+            const idleAct = npc.userData.actions['idle'] || npc.userData.actions['Idle'];
+            const walkAct = npc.userData.actions['walk'] || npc.userData.actions['Walk'];
+            if (idleAct && walkAct) {
+              walkAct.fadeOut(0.3);
+              idleAct.reset().fadeIn(0.3).play();
+            }
+            npc.userData.currentAnimState = 'idle';
+          }
+
           if (npc.leftArm) npc.leftArm.rotation.x = 0;
           if (npc.rightArm) npc.rightArm.rotation.x = 0;
         } else {
@@ -1624,12 +1945,11 @@ export class SceneManager {
           dir.y = 0;
           const dist = dir.length();
           if (dist < 0.4) {
-            // 抵達目標點，停留 1~3 秒
+            // 抵達目標點，停留 1.5~3 秒
             npc.userData.pauseTimer = 1.5 + Math.random() * 2;
-            // 尋找下一個散步點
             const islDef = this.islandDefs.find(d => d.id === npc.userData.islandId) || this.islandDefs[0];
             const a = Math.random() * Math.PI * 2;
-            const r = Math.random() * (islDef.radius * 0.55);
+            const r = Math.random() * (islDef.radius * 0.52);
             npc.userData.targetPos.set(
               islDef.pos.x + Math.cos(a) * r,
               npc.position.y,
@@ -1640,7 +1960,18 @@ export class SceneManager {
             npc.position.addScaledVector(dir, npc.userData.walkSpeed);
             npc.lookAt(npc.position.clone().add(dir));
 
-            // 手腳擺動動畫
+            // 切換為 Walk 動畫
+            if (npc.userData.currentAnimState !== 'walk' && npc.userData.actions) {
+              const idleAct = npc.userData.actions['idle'] || npc.userData.actions['Idle'];
+              const walkAct = npc.userData.actions['walk'] || npc.userData.actions['Walk'];
+              if (idleAct && walkAct) {
+                idleAct.fadeOut(0.2);
+                walkAct.reset().fadeIn(0.2).play();
+              }
+              npc.userData.currentAnimState = 'walk';
+            }
+
+            // 手腳擺動動畫 (後備幾何模型相容)
             const swing = Math.sin(time * 8) * 0.5;
             if (npc.leftArm) npc.leftArm.rotation.x = swing;
             if (npc.rightArm) npc.rightArm.rotation.x = -swing;
