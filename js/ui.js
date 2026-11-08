@@ -80,9 +80,9 @@ export class UIManager {
       const pos3D = this.app.sceneManager.islandCenters.get(isl.id);
       if (!pos3D) return;
 
-      // 標籤放置於島嶼中心上方
+      // 標籤放置於島嶼中心上方 (高懸於上空，避免遮擋地面居民與建築物)
       const elevatedPos = pos3D.clone();
-      elevatedPos.y += (isl.id === "island-center" ? 9.5 : 7.2);
+      elevatedPos.y += (isl.id === "island-center" ? 14.5 : 10.5);
 
       const screenPos = this.app.sceneManager.toScreenPosition(elevatedPos);
 

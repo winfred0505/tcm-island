@@ -80,12 +80,15 @@ export class SceneManager {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.container.appendChild(this.renderer.domElement);
 
-    // 4. 控制器 (OrbitControls)
+    // 4. 控制器 (OrbitControls - 降低靈敏度，滑鼠拉動更平順細緻)
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.05;
+    this.controls.dampingFactor = 0.08;
+    this.controls.rotateSpeed = 0.42; // 原預設 1.0，大幅調降使滑鼠拉動視角溫和沈穩、不眩暈
+    this.controls.panSpeed = 0.45;    // 調降平移速度，操控更細緻
+    this.controls.zoomSpeed = 0.65;   // 調降滾輪縮放速度，拉近細看更從容
     this.controls.maxPolarAngle = Math.PI / 2 - 0.05; // 防止穿入海面下
-    this.controls.minDistance = 15;
+    this.controls.minDistance = 12;
     this.controls.maxDistance = 160;
     this.controls.target.copy(this.overviewTarget);
 
@@ -355,7 +358,7 @@ export class SceneManager {
         tiers: 3,
         radius: 18,
         colorBase: 0x3d7b6a,
-        cameraOffset: new THREE.Vector3(0, 14, 26)
+        cameraOffset: new THREE.Vector3(0, 15, 24)
       },
       {
         id: "island-01",
@@ -365,7 +368,7 @@ export class SceneManager {
         tiers: 2,
         radius: 12.5,
         colorBase: 0x3a7566,
-        cameraOffset: new THREE.Vector3(34, 12, -4)
+        cameraOffset: new THREE.Vector3(0, 12, 19)
       },
       {
         id: "island-02",
@@ -375,7 +378,7 @@ export class SceneManager {
         tiers: 2,
         radius: 13,
         colorBase: 0x3f7f6f,
-        cameraOffset: new THREE.Vector3(32, 12, 44)
+        cameraOffset: new THREE.Vector3(0, 12, 19)
       },
       {
         id: "island-03",
@@ -385,7 +388,7 @@ export class SceneManager {
         tiers: 3,
         radius: 14,
         colorBase: 0x3b7768,
-        cameraOffset: new THREE.Vector3(-32, 12, 42)
+        cameraOffset: new THREE.Vector3(0, 12, 19)
       },
       {
         id: "island-04",
@@ -395,7 +398,7 @@ export class SceneManager {
         tiers: 2,
         radius: 12.5,
         colorBase: 0x376f61,
-        cameraOffset: new THREE.Vector3(-34, 12, -4)
+        cameraOffset: new THREE.Vector3(0, 12, 19)
       }
     ];
 
@@ -648,6 +651,16 @@ export class SceneManager {
           hospGroup.add(w);
         }
       }
+
+      // 醫療大樓點擊判定強化：加入 100% 透明 Hitbox 包圍盒
+      const hospHit = new THREE.Mesh(
+        new THREE.BoxGeometry(9.0, 7.0, 7.0),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      hospHit.position.set(1.2, 1.2, 0);
+      hospHit.userData = { type: "building", islandId: def.id };
+      hospGroup.add(hospHit);
+
       group.add(hospGroup);
 
       // 台灣地圖立體展示台
@@ -1621,30 +1634,55 @@ export class SceneManager {
   }
 
   /**
-   * 點島鏡頭飛近運鏡 (1.8 秒沿弧線推近)
+   * 點島鏡頭飛近運鏡 (平滑推近並將島嶼完美置中)
+   * @param {string} islandId 目標島嶼 ID
+   * @param {boolean} openDrawer 是否開啟右側介紹抽屜 (若為 false 則為純置中特寫看細節)
    */
-  focusIsland(islandId) {
+  focusIsland(islandId, openDrawer = true) {
     const def = this.islandDefs.find(d => d.id === islandId);
     if (!def) return;
 
     // 關閉目前所有泡泡
     this.app.livingWorld.closeBubble();
-    this.app.ui.prepareIslandDrawer(def.id);
+    if (openDrawer) {
+      this.app.ui.prepareIslandDrawer(def.id);
+    }
+
+    // 計算島嶼目標中心點與相機特寫位置
+    const targetLook = def.pos.clone();
+    targetLook.y = def.id === "island-center" ? 3.6 : 2.5;
+
+    const targetPos = def.pos.clone().add(def.cameraOffset);
+
+    // 置中偏置補償：
+    // 若開啟右側抽屜 (桌機寬度 460px)，相機朝向與位置向右側微移，使島嶼精準置中在左側開闊可視區域
+    if (openDrawer && window.innerWidth > 768) {
+      const drawerWidth = 460;
+      const forward = new THREE.Vector3().subVectors(targetLook, targetPos).normalize();
+      const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+      const lateralShift = (drawerWidth / window.innerWidth) * 11.5;
+      targetPos.addScaledVector(right, -lateralShift);
+      targetLook.addScaledVector(right, -lateralShift);
+    } else if (openDrawer && window.innerWidth <= 768) {
+      // 手機底部抽屜佔據下半部，相機微調使島嶼在上半部置中
+      targetPos.y += 2.8;
+      targetLook.y += 2.8;
+    }
 
     if (this.isReducedMotion) {
-      this.camera.position.copy(def.pos).add(def.cameraOffset);
-      this.controls.target.copy(def.pos);
-      this.app.ui.openIslandDrawer(def.id);
+      this.camera.position.copy(targetPos);
+      this.controls.target.copy(targetLook);
+      if (openDrawer) {
+        this.app.ui.openIslandDrawer(def.id);
+      }
       return;
     }
 
     const startPos = this.camera.position.clone();
     const startTarget = this.controls.target.clone();
-    const targetPos = def.pos.clone().add(def.cameraOffset);
-    const targetLook = def.pos.clone();
 
     const startTime = performance.now();
-    const duration = 1800;
+    const duration = 1600; // 1.6 秒流暢推進
 
     const animateFlight = (now) => {
       const elapsed = now - startTime;
@@ -1655,15 +1693,17 @@ export class SceneManager {
         : 1 - Math.pow(-2 * progress + 2, 3) / 2;
 
       this.camera.position.lerpVectors(startPos, targetPos, t);
-      // 沿弧線稍微拉高
-      this.camera.position.y += Math.sin(t * Math.PI) * 4;
+      // 沿弧線稍微拉高避免撞穿景觀
+      this.camera.position.y += Math.sin(t * Math.PI) * 3.5;
       this.controls.target.lerpVectors(startTarget, targetLook, t);
 
       if (progress < 1) {
         requestAnimationFrame(animateFlight);
       } else {
         this.controls.target.copy(targetLook);
-        this.app.ui.openIslandDrawer(def.id);
+        if (openDrawer) {
+          this.app.ui.openIslandDrawer(def.id);
+        }
       }
     };
     requestAnimationFrame(animateFlight);
@@ -1740,7 +1780,7 @@ export class SceneManager {
           for (const hit of hits) {
             let obj = hit.object;
             while (obj && obj !== this.scene) {
-              if (obj.userData && (obj.userData.type === "npc" || obj.userData.type === "building" || obj.userData.type === "shell" || obj.userData.type === "animal")) {
+              if (obj.userData && (obj.userData.type === "npc" || obj.userData.type === "building" || obj.userData.type === "shell" || obj.userData.type === "animal" || obj.userData.type === "terrain")) {
                 hoverTarget = true;
                 break;
               }
@@ -1824,6 +1864,11 @@ export class SceneManager {
               const targetAnimal = obj.userData.parentAnimal || obj;
               const data = targetAnimal.userData?.data || obj.userData.data;
               this.app.livingWorld.openAnimalDialogue(data, targetAnimal);
+              return;
+            }
+            // 5. 點擊島嶼地貌 (草地/台地)：平滑飛近並置中該島看細節 (純視覺特寫，不強制開抽屜遮擋視野)
+            if (obj.userData.type === "terrain" && obj.userData.islandId) {
+              this.focusIsland(obj.userData.islandId, false);
               return;
             }
           }

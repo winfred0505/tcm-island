@@ -83,8 +83,11 @@ html[data-theme="夜海"] {
 
 html, body {
   width: 100%;
+  max-width: 100vw;
   height: 100%;
   overflow: hidden;
+  overflow-x: hidden;
+  position: relative;
   font-family: var(--font-family);
   background-color: var(--bg);
   color: var(--ink);
@@ -531,6 +534,13 @@ html, body {
   transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 
+@media (min-width: 769px) {
+  /* 桌機模式：右側為獨立展開側欄，左側 3D 畫面保持完全通透可互動，不使用全螢幕遮罩 */
+  .drawer-backdrop {
+    display: none !important;
+  }
+}
+
 .drawer-backdrop.open {
   opacity: 1;
   visibility: visible;
@@ -550,12 +560,16 @@ html, body {
   display: flex;
   flex-direction: column;
   transform: translateX(100%);
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.35s ease;
   overflow: hidden;
 }
 
 .island-drawer.open {
   transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .drawer-header {
@@ -1177,10 +1191,14 @@ body.no-webgl #fallback-list-container {
     border-top: 1px solid var(--line);
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     transform: translateY(100%);
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .island-drawer.open {
     transform: translateY(0);
+    visibility: visible;
+    pointer-events: auto;
   }
 
   .modal-dialog {
