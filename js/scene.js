@@ -48,6 +48,10 @@ export class SceneManager {
     this.modelCache = new Map();
     this.mixers = [];
     this.whaleMesh = null;
+    this.bridgePaths = {};
+    this.skyBirds = [];
+    this.marineCreatures = [];
+    this.whaleSpoutParticles = [];
 
     // Raycaster 點擊互動
     this.raycaster = new THREE.Raycaster();
@@ -126,19 +130,42 @@ export class SceneManager {
     const urls = [
       // 角色 (Characters)
       'assets/models/characters/Pharmacist.glb',
-      'assets/models/characters/WardNurse.glb',
-      'assets/models/characters/WhiteCoatDoctor.glb',
-      'assets/models/characters/FoodCourier.glb',
       'assets/models/characters/StoreManager.glb',
-      'assets/models/characters/Schoolkid.glb',
+      'assets/models/characters/FoodCourier.glb',
+      'assets/models/characters/Student.glb',
+      'assets/models/characters/ChiefSurgeon.glb',
+      'assets/models/characters/WardNurse.glb',
+      'assets/models/characters/HospitalDirector.glb',
       'assets/models/characters/GrandmaShopper.glb',
+      'assets/models/characters/WardOrderly.glb',
+      'assets/models/characters/OfficeLady.glb',
+      'assets/models/characters/HeadChef.glb',
+      'assets/models/characters/WhiteCoatDoctor.glb',
+      'assets/models/characters/OfficeIntern.glb',
+      'assets/models/characters/Paramedic.glb',
+      'assets/models/characters/DeliveryRider.glb',
       // 動物 (Animals)
-      'assets/models/animals/Squirrel.glb',
-      'assets/models/animals/Hare.glb',
-      'assets/models/animals/Duck.glb',
       'assets/models/animals/Corgi.glb',
+      'assets/models/animals/Duck.glb',
+      'assets/models/animals/Squirrel.glb',
+      'assets/models/animals/Hedgehog.glb',
+      'assets/models/animals/Hare.glb',
+      'assets/models/animals/Platypus.glb',
+      'assets/models/animals/Chihuahua.glb',
+      'assets/models/animals/Fox.glb',
+      'assets/models/animals/Bunnykit.glb',
+      // 鳥類 (Birds)
+      'assets/models/birds/Eagle.glb',
       'assets/models/animals/Seagull.glb',
+      'assets/models/birds/Pelican.glb',
+      'assets/models/birds/Toucan.glb',
+      // 海洋生物 (Marine)
       'assets/models/animals/Whale.glb',
+      'assets/models/marine/Narwhal.glb',
+      'assets/models/marine/Seal.glb',
+      'assets/models/marine/BlueTang.glb',
+      'assets/models/marine/Fugu.glb',
+      'assets/models/marine/Shark.glb',
       // 自然地貌 (Nature)
       'assets/models/nature/Cliff001.glb',
       'assets/models/nature/Cliff002.glb',
@@ -161,7 +188,7 @@ export class SceneManager {
         },
         undefined,
         (err) => {
-          console.warn(`[3D] 無法載入模型: ${url}`, err);
+          console.warn('[3D] 無法載入模型: ' + url, err);
           resolve(null);
         }
       );
@@ -1039,82 +1066,202 @@ export class SceneManager {
    * 建造中央島與各分島相連的拱橋
    */
   buildBridges() {
-    const bridgeMat = new THREE.MeshLambertMaterial({ color: 0xb5997d, flatShading: true });
+    const bridgeMat = new THREE.MeshLambertMaterial({ color: 0x9c7a5b, flatShading: true });
     const railingMat = new THREE.MeshLambertMaterial({ color: 0x6e4726, flatShading: true });
+    const stonePillarMat = new THREE.MeshLambertMaterial({ color: 0x7a7469, flatShading: true });
+    const flagColors = [0xef476f, 0xffd166, 0x06d6a0, 0x118ab2];
+
+    this.bridgePaths = {};
 
     this.islandDefs.slice(1).forEach(def => {
-      const p1 = new THREE.Vector3(0, 0.5, 0);
-      const p2 = def.pos.clone().multiplyScalar(0.75);
-      p2.y = 0.5;
+      const targetCenter = def.pos.clone();
+      const dir = targetCenter.clone().normalize();
 
-      const mid = p1.clone().add(p2).multiplyScalar(0.5);
-      const dist = p1.distanceTo(p2);
+      // 中央島橋頭 (高程 y=2.4)
+      const pStart = dir.clone().multiplyScalar(15.5);
+      pStart.y = 2.4;
 
-      const bridge = new THREE.Group();
-      bridge.position.copy(mid);
-      bridge.lookAt(p2);
+      // 分島橋頭 (高程 y=2.4)
+      const pEnd = def.pos.clone().sub(dir.clone().multiplyScalar(10.5));
+      pEnd.y = 2.4;
 
-      // 橋面
-      const plank = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.35, dist), bridgeMat);
-      plank.castShadow = true;
-      bridge.add(plank);
+      const archHeight = 1.35; // 拱高 (中點最高處 y = 3.75)
+      const dist = pStart.distanceTo(pEnd);
 
-      // 🎏 彩旗串 (掛於橋兩側)
-      const buntingColors = [0xef476f, 0xffd166, 0x06d6a0, 0x118ab2];
-      for (let b = -dist / 2 + 1; b < dist / 2 - 1; b += 2.5) {
-        const flagMat = new THREE.MeshLambertMaterial({
-          color: buntingColors[Math.abs(Math.floor(b)) % buntingColors.length],
-          side: THREE.DoubleSide
-        });
-        const flag = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.5, 3), flagMat);
-        flag.rotation.z = Math.PI;
-        flag.position.set(1.1, 0.6, b);
-        bridge.add(flag);
+      this.bridgePaths[def.id] = {
+        pStart: pStart.clone(),
+        pEnd: pEnd.clone(),
+        dir: dir.clone(),
+        archHeight,
+        dist,
+        islandId: def.id
+      };
+
+      const bridgeGroup = new THREE.Group();
+
+      // 沿拱橋拋物線精細鋪設 16 段木板步道
+      const segments = 16;
+      for (let s = 0; s < segments; s++) {
+        const t1 = s / segments;
+        const t2 = (s + 1) / segments;
+        const tMid = (t1 + t2) / 2;
+
+        const posMid = new THREE.Vector3().lerpVectors(pStart, pEnd, tMid);
+        posMid.y = pStart.y + (pEnd.y - pStart.y) * tMid + archHeight * Math.sin(tMid * Math.PI);
+
+        const posNext = new THREE.Vector3().lerpVectors(pStart, pEnd, t2);
+        posNext.y = pStart.y + (pEnd.y - pStart.y) * t2 + archHeight * Math.sin(t2 * Math.PI);
+
+        const segDir = posNext.clone().sub(posMid).normalize();
+
+        const plank = new THREE.Mesh(
+          new THREE.BoxGeometry(2.35, 0.32, dist / segments * 0.96),
+          bridgeMat
+        );
+        plank.position.copy(posMid);
+        plank.lookAt(posMid.clone().add(segDir));
+        plank.castShadow = true;
+        plank.receiveShadow = true;
+        bridgeGroup.add(plank);
+
+        // 兩側木質護欄欄杆
+        const postGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.85, 4);
+        const postL = new THREE.Mesh(postGeo, railingMat);
+        postL.position.copy(posMid);
+        postL.position.y += 0.45;
+        const sideVec = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
+        postL.position.addScaledVector(sideVec, 1.15);
+        bridgeGroup.add(postL);
+
+        const postR = postL.clone();
+        postR.position.copy(posMid);
+        postR.position.y += 0.45;
+        postR.position.addScaledVector(sideVec, -1.15);
+        bridgeGroup.add(postR);
+
+        // 護欄彩旗 (隔段掛設)
+        if (s % 3 === 0) {
+          const flagMat = new THREE.MeshLambertMaterial({
+            color: flagColors[s % flagColors.length],
+            side: THREE.DoubleSide
+          });
+          const flag = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.45, 3), flagMat);
+          flag.rotation.z = Math.PI;
+          flag.position.copy(postL.position);
+          flag.position.y -= 0.15;
+          bridgeGroup.add(flag);
+        }
       }
 
-      this.scene.add(bridge);
+      // 拱橋下方的雙組石砌堅固橋墩 (分別位於 35% 與 65% 跨海處)
+      [0.35, 0.65].forEach(tp => {
+        const pMid = new THREE.Vector3().lerpVectors(pStart, pEnd, tp);
+        const yTop = pStart.y + archHeight * Math.sin(tp * Math.PI) - 0.15;
+        const pillarH = Math.max(1, yTop + 0.5);
+
+        const pillar = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.65, 0.85, pillarH, 8),
+          stonePillarMat
+        );
+        pillar.position.set(pMid.x, yTop - pillarH / 2, pMid.z);
+        pillar.castShadow = true;
+        pillar.receiveShadow = true;
+        bridgeGroup.add(pillar);
+      });
+
+      this.scene.add(bridgeGroup);
     });
   }
 
   /**
-   * 建立生活感元素：居民 NPC、動物、雲鳥、帆船、彩虹
+   * 計算 3D 空間任意 (x, z) 座標的地表/橋面真實物理高度 (Ground Clamping)
    */
+  getTerrainHeight(x, z) {
+    // 1. 優先檢查是否踩在 4 座跨島拱橋木棧道上
+    for (const id in this.bridgePaths) {
+      const b = this.bridgePaths[id];
+      const vx = x - b.pStart.x;
+      const vz = z - b.pStart.z;
+      const dx = b.pEnd.x - b.pStart.x;
+      const dz = b.pEnd.z - b.pStart.z;
+      const lenSq = dx * dx + dz * dz;
+      if (lenSq === 0) continue;
+      const t = Math.max(0, Math.min(1, (vx * dx + vz * dz) / lenSq));
+      const projX = b.pStart.x + t * dx;
+      const projZ = b.pStart.z + t * dz;
+      const distToMid = Math.hypot(x - projX, z - projZ);
+      if (distToMid <= 1.45) {
+        return b.pStart.y + (b.pEnd.y - b.pStart.y) * t + b.archHeight * Math.sin(t * Math.PI);
+      }
+    }
+
+    // 2. 檢查中央島 (島嶼階梯台地物理高度)
+    const dCenter = Math.hypot(x, z);
+    if (dCenter <= 18.5) {
+      if (dCenter <= 7.2) return 4.1; // 上層噴泉主廣場
+      if (dCenter <= 12.8) return 2.4; // 二階綠草台地
+      return Math.max(0.4, 2.4 - ((dCenter - 12.8) / 5.7) * 1.9); // 沙灘外圍緩坡
+    }
+
+    // 3. 檢查 4 座分島
+    if (this.islandDefs) {
+      for (let i = 1; i < this.islandDefs.length; i++) {
+        const def = this.islandDefs[i];
+        const dist = Math.hypot(x - def.pos.x, z - def.pos.z);
+        if (dist <= def.radius + 2.5) {
+          if (dist <= 6.8) return 2.5; // 分島核心台地頂部
+          return Math.max(0.4, 2.5 - Math.min(1, (dist - 6.8) / (def.radius - 6.8 + 2.5)) * 2.0);
+        }
+      }
+    }
+
+    // 外海平靜水面基準高程
+    return 0.15;
+  }
   setupLivingWorld() {
-    // 1. 居民 NPC
+    // 1. 每座小島 2~3 位不同的人物角色 (含固定駐守島主與跨橋移動角色)
     this.createResidents();
 
-    // 2. 7 種動物 (松鼠、兔子、鴨子、貓咪、小狗、海龜、海豚)
+    // 2. 每座小島 1~2 種陸地動物 (遵守地貌物理高度貼合與跳躍步態)
     this.createAnimals();
 
-    // 3. 雲朵 (8~12 朵在外圍飄動)
+    // 3. 天空飛鳥 (雄鷹高空盤旋側傾、海鷗群翱翔拍翅、大嘴鵜鶘掠海、彩嘴巨嘴鳥林冠滑翔)
+    this.createSkyBirds();
+
+    // 4. 海洋生物 (深海巨鯨浮潛噴水、獨角鯨長角破浪、斑點海豹探頭、藍倒吊與河豚群游、巡弋鯊)
+    this.createMarineCreatures();
+
+    // 5. 雲朵 (8~12 朵在外圍飄動)
     this.createClouds();
 
-    // 4. 鳥群 (2 群 V 字隊形翱翔)
-    this.createBirdFlocks();
-
-    // 5. 外海帆船 (繞外海巡航)
+    // 6. 外海帆船 (繞外海巡航)
     this.createBoats();
 
-    // 6. 🌈 彩虹 (日間橫跨群島上空)
+    // 7. 🌈 彩虹 (日間橫跨群島上空)
     this.createRainbow();
   }
 
   createResidents() {
     if (!this.app.data || !this.app.data.residents) return;
 
-    // 依據角色設定精準對應桌面 3D 人物模型
+    // 16 位角色精確對應桌面 3D 人物模型
     const characterModelMap = {
-      "npc-01": "assets/models/characters/Pharmacist.glb",       // 董藥師 (中藥科組長)
-      "npc-02": "assets/models/characters/StoreManager.glb",     // 市集老陳 (資深掌櫃)
-      "npc-03": "assets/models/characters/FoodCourier.glb",      // 送貨員阿明 (跨島運送)
-      "npc-04": "assets/models/characters/WardNurse.glb",        // 庭瑄藥師 (行政調劑)
-      "npc-05": "assets/models/characters/WhiteCoatDoctor.glb",   // 宏偉藥師 (評鑑長)
-      "npc-06": "assets/models/characters/Pharmacist.glb",       // 家豪藥師 (病房專責)
-      "npc-07": "assets/models/characters/GrandmaShopper.glb",   // 順伯 (代煎老師傅)
-      "npc-08": "assets/models/characters/WardNurse.glb",        // 敏華藥師 (品管師)
-      "npc-09": "assets/models/characters/Pharmacist.glb",       // 佳穎藥師 (衛教專員)
-      "npc-10": "assets/models/characters/WhiteCoatDoctor.glb",   // 志遠藥師 (臨床導師)
-      "npc-11": "assets/models/characters/Schoolkid.glb"         // 宣妤同學 (實習生)
+      "npc-01": "assets/models/characters/Pharmacist.glb",       // 董藥師 (組長/導覽, 島主)
+      "npc-02": "assets/models/characters/StoreManager.glb",     // 老陳 (掌櫃)
+      "npc-03": "assets/models/characters/FoodCourier.glb",      // 阿明 (跨島送貨員)
+      "npc-12": "assets/models/characters/Student.glb",          // 宣妤同學 (實習生)
+      "npc-05": "assets/models/characters/ChiefSurgeon.glb",     // 宏偉藥師 (評鑑長, 島主)
+      "npc-04": "assets/models/characters/WardNurse.glb",        // 庭瑄藥師 (行政主管)
+      "npc-13": "assets/models/characters/HospitalDirector.glb", // 陳院長 (決策長)
+      "npc-07": "assets/models/characters/GrandmaShopper.glb",   // 順伯 (古法代煎, 島主)
+      "npc-06": "assets/models/characters/Pharmacist.glb",       // 家豪藥師 (病房調劑)
+      "npc-14": "assets/models/characters/WardOrderly.glb",      // 林阿叔 (勤務員)
+      "npc-08": "assets/models/characters/WardNurse.glb",        // 敏華藥師 (品管師, 島主)
+      "npc-09": "assets/models/characters/OfficeLady.glb",       // 佳穎藥師 (衛教專員)
+      "npc-15": "assets/models/characters/HeadChef.glb",         // 秉憲大廚 (藥膳主廚)
+      "npc-10": "assets/models/characters/WhiteCoatDoctor.glb",   // 志遠藥師 (臨床導師, 島主)
+      "npc-11": "assets/models/characters/OfficeIntern.glb",     // 育豪見習生 (見習藥師)
+      "npc-16": "assets/models/characters/Paramedic.glb"         // 紹宇教官 (急救教官)
     };
 
     this.app.data.residents.forEach(resData => {
@@ -1132,39 +1279,46 @@ export class SceneManager {
         mixer = modelObj.mixer;
         actions = modelObj.actions;
 
-        // 預設撥放 Idle 動畫
         const idleAction = actions['idle'] || actions['Idle'];
         if (idleAction) idleAction.play();
       } else {
         npc = this.buildHumanoidMesh(resData);
       }
 
-      // 隨機在所屬島嶼的半徑內散步
+      const isHost = !!resData.isHost;
       const angle = Math.random() * Math.PI * 2;
-      const r = Math.random() * (islDef.radius * 0.52);
-      const baseY = islDef.id === "island-center" ? 4.1 : 2.5;
+      const r = isHost ? (Math.random() * 3.5) : (Math.random() * (islDef.radius * 0.52));
+      const initX = islDef.pos.x + Math.cos(angle) * r;
+      const initZ = islDef.pos.z + Math.sin(angle) * r;
+      const initY = this.getTerrainHeight(initX, initZ);
 
-      npc.position.set(
-        islDef.pos.x + Math.cos(angle) * r,
-        baseY,
-        islDef.pos.z + Math.sin(angle) * r
-      );
+      npc.position.set(initX, initY, initZ);
 
       npc.userData = {
         type: "npc",
         data: resData,
         islandId: resData.islandId,
+        currentIslandId: resData.islandId,
+        isHost: isHost,
         originPos: npc.position.clone(),
         targetPos: npc.position.clone(),
-        walkSpeed: 0.02 + Math.random() * 0.012,
-        pauseTimer: 0,
+        state: "PATROL", // PATROL, TO_BRIDGE, CROSSING_BRIDGE
+        bridgeId: null,
+        bridgeProgress: 0,
+        bridgeReverse: false,
+        targetIslandId: null,
+        walkSpeed: 0.036 + Math.random() * 0.012,
+        turnSpeed: 6.8,
+        pauseTimer: 0.5 + Math.random() * 2.0,
+        patrolCount: 0,
+        patrolLimitBeforeTrip: resData.id === "npc-03" ? 1 : (2 + Math.floor(Math.random() * 3)),
         isCourier: resData.id === "npc-03",
         mixer,
         actions,
         currentAnimState: 'idle'
       };
 
-      // 點擊判定強化：加入 100% 透明 Hitbox 圓柱，大幅提高使用者點選靈敏度 (transparent: true, opacity: 0 確保 Raycaster 可檢測)
+      // 100% 透明 Hitbox 圓柱，確保滑鼠點擊判定靈敏精確
       const hitMesh = new THREE.Mesh(
         new THREE.CylinderGeometry(1.4, 1.4, 2.6, 8),
         new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
@@ -1185,45 +1339,27 @@ export class SceneManager {
 
   buildHumanoidMesh(resData) {
     const group = new THREE.Group();
-
-    // 隨機膚色與服裝搭配 (藥師穿白袍/綠袍)
     const skinMat = new THREE.MeshLambertMaterial({ color: 0xffdfc4 });
-    const robeMat = resData.title.includes("藥師") || resData.title.includes("組長")
-      ? new THREE.MeshLambertMaterial({ color: 0xf5f7fa }) // 白袍
-      : new THREE.MeshLambertMaterial({ color: 0x2f7a6b }); // 綠色便服
-
+    const robeMat = resData.title.includes("藥師") || resData.title.includes("組長") || resData.title.includes("醫師")
+      ? new THREE.MeshLambertMaterial({ color: 0xf5f7fa })
+      : new THREE.MeshLambertMaterial({ color: 0x2f7a6b });
     const pantsMat = new THREE.MeshLambertMaterial({ color: 0x334e68 });
     const hairMat = new THREE.MeshLambertMaterial({ color: 0x241c18 });
 
-    // 頭部
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.38, 8, 8), skinMat);
     head.position.y = 1.35;
     head.castShadow = true;
     group.add(head);
 
-    // 頭髮 / 帽子
     const hair = new THREE.Mesh(new THREE.SphereGeometry(0.4, 6, 6), hairMat);
     hair.position.set(0, 1.45, -0.05);
     group.add(hair);
 
-    // 董藥師圓眼鏡裝飾
-    if (resData.id === "npc-01") {
-      const glassesMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
-      const g1 = new THREE.Mesh(new THREE.RingGeometry(0.08, 0.12, 8), glassesMat);
-      g1.position.set(-0.15, 1.38, 0.38);
-      group.add(g1);
-      const g2 = g1.clone();
-      g2.position.set(0.15, 1.38, 0.38);
-      group.add(g2);
-    }
-
-    // 身體 (外袍)
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.42, 0.8, 6), robeMat);
     body.position.y = 0.8;
     body.castShadow = true;
     group.add(body);
 
-    // 手臂 (左右)
     const armGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.55, 4);
     const leftArm = new THREE.Mesh(armGeo, robeMat);
     leftArm.position.set(-0.42, 0.85, 0);
@@ -1235,7 +1371,6 @@ export class SceneManager {
     group.add(rightArm);
     group.rightArm = rightArm;
 
-    // 雙腿
     const legGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.5, 4);
     const leftLeg = new THREE.Mesh(legGeo, pantsMat);
     leftLeg.position.set(-0.18, 0.25, 0);
@@ -1247,14 +1382,6 @@ export class SceneManager {
     group.add(rightLeg);
     group.rightLeg = rightLeg;
 
-    // 送貨員阿明扛著的藥材貨箱
-    if (resData.id === "npc-03") {
-      const crateMat = new THREE.MeshLambertMaterial({ color: 0x8b5a2b });
-      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.55, 0.65), crateMat);
-      crate.position.set(0.45, 1.1, 0.2);
-      group.add(crate);
-    }
-
     group.userData = { type: "npc", data: resData };
     return group;
   }
@@ -1263,196 +1390,323 @@ export class SceneManager {
     if (!this.app.data || !this.app.data.animals) return;
 
     this.app.data.animals.forEach(aniData => {
+      // 僅陸地動物由此建立，飛鳥與海洋生物由專屬系統管理
+      if (aniData.category !== "land") return;
+
+      const islDef = this.islandDefs.find(d => d.id === aniData.islandId) || this.islandDefs[0];
       let animalMesh = null;
-      if (aniData.id === "squirrel") animalMesh = this.buildSquirrel();
-      else if (aniData.id === "rabbit") animalMesh = this.buildRabbit();
-      else if (aniData.id === "duck") animalMesh = this.buildDuck();
-      else if (aniData.id === "cat") animalMesh = this.buildCat();
-      else if (aniData.id === "dog") animalMesh = this.buildDog();
-      else if (aniData.id === "turtle") animalMesh = this.buildTurtle();
-      else if (aniData.id === "dolphin") animalMesh = this.buildDolphin();
-      else if (aniData.id === "whale") animalMesh = this.buildWhale();
-      else if (aniData.id === "seagull") animalMesh = this.buildSeagull();
 
-      if (animalMesh) {
-        animalMesh.userData = { type: "animal", data: aniData };
-        // 透明 Hitbox 擴大可點擊範圍
-        const aniHit = new THREE.Mesh(
-          new THREE.SphereGeometry(1.5, 6, 6),
-          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
-        );
-        aniHit.position.y = 0.8;
-        aniHit.userData = { type: "animal", parentAnimal: animalMesh, data: aniData };
-        animalMesh.add(aniHit);
-
-        this.scene.add(animalMesh);
-        this.animals.push(animalMesh);
+      if (aniData.id === "corgi") {
+        animalMesh = this.instantiateModel('assets/models/animals/Corgi.glb', 0.85, { alignBottom: true })?.mesh;
+      } else if (aniData.id === "duck") {
+        animalMesh = this.instantiateModel('assets/models/animals/Duck.glb', 0.65, { alignBottom: true })?.mesh;
+      } else if (aniData.id === "squirrel") {
+        animalMesh = this.instantiateModel('assets/models/animals/Squirrel.glb', 0.65, { alignBottom: true })?.mesh;
+      } else if (aniData.id === "hedgehog") {
+        animalMesh = this.instantiateModel('assets/models/animals/Hedgehog.glb', 0.55, { alignBottom: true })?.mesh;
+      } else if (aniData.id === "hare") {
+        animalMesh = this.instantiateModel('assets/models/animals/Hare.glb', 0.7, { alignBottom: true })?.mesh;
+      } else if (aniData.id === "platypus") {
+        animalMesh = this.instantiateModel('assets/models/animals/Platypus.glb', 0.6, { alignBottom: true })?.mesh;
+      } else if (aniData.id === "chihuahua") {
+        animalMesh = this.instantiateModel('assets/models/animals/Chihuahua.glb', 0.75, { alignBottom: true })?.mesh;
+      } else if (aniData.id === "fox") {
+        animalMesh = this.instantiateModel('assets/models/animals/Fox.glb', 0.85, { alignBottom: true })?.mesh;
+      } else if (aniData.id === "bunnykit") {
+        animalMesh = this.instantiateModel('assets/models/animals/Bunnykit.glb', 0.55, { alignBottom: true })?.mesh;
       }
+
+      if (!animalMesh) {
+        // 後備幾何體
+        animalMesh = new THREE.Mesh(
+          new THREE.SphereGeometry(0.4, 6, 6),
+          new THREE.MeshLambertMaterial({ color: 0xddaa77 })
+        );
+      }
+
+      const grp = new THREE.Group();
+      grp.add(animalMesh);
+
+      const angle = Math.random() * Math.PI * 2;
+      const r = 2.0 + Math.random() * (islDef.radius * 0.45);
+      const initX = islDef.pos.x + Math.cos(angle) * r;
+      const initZ = islDef.pos.z + Math.sin(angle) * r;
+      const initY = this.getTerrainHeight(initX, initZ);
+
+      grp.position.set(initX, initY, initZ);
+
+      grp.userData = {
+        type: "animal",
+        data: aniData,
+        islandId: islDef.id,
+        targetPos: grp.position.clone(),
+        walkSpeed: 0.02 + Math.random() * 0.015,
+        turnSpeed: 6.0,
+        pauseTimer: Math.random() * 3.0,
+        isHopper: aniData.id === "hare" || aniData.id === "bunnykit"
+      };
+
+      // 透明 Hitbox
+      const aniHit = new THREE.Mesh(
+        new THREE.SphereGeometry(1.4, 6, 6),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      aniHit.position.y = 0.6;
+      aniHit.userData = { type: "animal", parentAnimal: grp, data: aniData };
+      grp.add(aniHit);
+
+      this.scene.add(grp);
+      this.animals.push(grp);
     });
   }
 
-  buildSquirrel() {
-    const sq = this.instantiateModel('assets/models/animals/Squirrel.glb', 0.65, { alignBottom: true });
-    if (sq) {
-      const group = new THREE.Group();
-      group.add(sq.mesh);
-      group.position.set(27, 2.5, -17);
-      if (sq.actions['idle']) sq.actions['idle'].play();
-      return group;
-    }
-    const group = new THREE.Group();
-    const brownMat = new THREE.MeshLambertMaterial({ color: 0x99582a });
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 6, 6), brownMat);
-    body.position.y = 0.32;
-    group.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 6, 6), brownMat);
-    head.position.set(0, 0.52, 0.2);
-    group.add(head);
-    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.22, 0.6, 5), brownMat);
-    tail.position.set(0, 0.45, -0.28);
-    tail.rotation.x = -0.6;
-    group.add(tail);
-    group.position.set(28, 2.6, -18);
-    return group;
-  }
+  createSkyBirds() {
+    this.skyBirds = [];
 
-  buildRabbit() {
-    const rb = this.instantiateModel('assets/models/animals/Hare.glb', 0.7, { alignBottom: true });
-    if (rb) {
-      const group = new THREE.Group();
-      group.add(rb.mesh);
-      group.position.set(-27, 4.2, 21);
-      if (rb.actions['idle']) rb.actions['idle'].play();
-      return group;
-    }
-    const group = new THREE.Group();
-    const whiteMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 6), whiteMat);
-    body.position.y = 0.3;
-    group.add(body);
-    const ear1 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.35, 0.08), whiteMat);
-    ear1.position.set(-0.12, 0.65, 0);
-    group.add(ear1);
-    const ear2 = ear1.clone();
-    ear2.position.set(0.12, 0.65, 0);
-    group.add(ear2);
-    group.position.set(-28, 4.3, 22);
-    return group;
-  }
+    // 1. 🦅 天際雄鷹 (高空大半徑盤旋，空氣動力學側傾)
+    const eagleObj = this.instantiateModel('assets/models/birds/Eagle.glb', 1.8, { alignBottom: false });
+    if (eagleObj) {
+      const eagleGroup = new THREE.Group();
+      eagleGroup.add(eagleObj.mesh);
+      const flap = eagleObj.actions['walk'] || eagleObj.actions['idle'];
+      if (flap) flap.play();
 
-  buildDuck() {
-    const dk = this.instantiateModel('assets/models/animals/Duck.glb', 0.65, { alignBottom: true });
-    if (dk) {
-      const group = new THREE.Group();
-      group.add(dk.mesh);
-      group.position.set(36, 0.4, 28);
-      if (dk.actions['idle']) dk.actions['idle'].play();
-      return group;
+      eagleGroup.position.set(0, 42, 60);
+      const eagleData = this.app.data?.animals?.find(a => a.id === "eagle") || { name: "天際雄鷹", icon: "🦅", location: "群島高空", dialogue: "嘯——！在高空乘風翱翔，整個中藥群島盡收眼底！" };
+      eagleGroup.userData = {
+        type: "animal",
+        data: eagleData,
+        type: "eagle",
+        center: new THREE.Vector3(0, 42, 0),
+        radius: 62,
+        angle: 0,
+        speed: 0.0035,
+        baseY: 42,
+        wingRoll: -0.32
+      };
+      this.scene.add(eagleGroup);
+      this.skyBirds.push(eagleGroup);
     }
-    const group = new THREE.Group();
-    const yellowMat = new THREE.MeshLambertMaterial({ color: 0xffd166 });
-    const orangeMat = new THREE.MeshLambertMaterial({ color: 0xf77f00 });
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 6, 6), yellowMat);
-    body.position.y = 0.32;
-    group.add(body);
-    const bill = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.25, 4), orangeMat);
-    bill.rotation.x = Math.PI / 2;
-    bill.position.set(0, 0.35, 0.38);
-    group.add(bill);
-    group.position.set(38, 0.3, 30);
-    return group;
-  }
 
-  buildDog() {
-    const dg = this.instantiateModel('assets/models/animals/Corgi.glb', 0.85, { alignBottom: true });
-    if (dg) {
-      const group = new THREE.Group();
-      group.add(dg.mesh);
-      group.position.set(3.5, 4.2, 5.5);
-      if (dg.actions['idle']) dg.actions['idle'].play();
-      return group;
+    // 2. 🕊️ 群島海鷗群 (2 群，低空在海島上空拍翅穿梭)
+    for (let f = 0; f < 2; f++) {
+      const flock = new THREE.Group();
+      for (let b = 0; b < 3; b++) {
+        const sg = this.instantiateModel('assets/models/animals/Seagull.glb', 0.7, { alignBottom: true });
+        let bird = null;
+        if (sg) {
+          bird = sg.mesh;
+          const act = sg.actions['walk'] || sg.actions['idle'];
+          if (act) act.play();
+        } else {
+          bird = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.8, 4), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+        }
+        bird.position.set((b - 1) * 2.6, Math.sin(b * 1.5) * 0.4, Math.abs(b - 1) * 2.0);
+        flock.add(bird);
+      }
+      flock.position.set(f === 0 ? 30 : -30, 18, f === 0 ? 30 : -30);
+      flock.userData = {
+        type: "flock",
+        radius: 54 + f * 12,
+        angle: f * Math.PI,
+        speed: 0.0038,
+        baseY: 18 + f * 4
+      };
+      this.scene.add(flock);
+      this.skyBirds.push(flock);
     }
-    const group = new THREE.Group();
-    const dogMat = new THREE.MeshLambertMaterial({ color: 0xd4a373 });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.4, 0.75), dogMat);
-    body.position.y = 0.4;
-    group.add(body);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.35, 0.38), dogMat);
-    head.position.set(0, 0.68, 0.4);
-    group.add(head);
-    group.position.set(4, 4.3, 6);
-    return group;
-  }
 
-  buildWhale() {
-    const wh = this.instantiateModel('assets/models/animals/Whale.glb', 3.8, { alignBottom: false });
-    if (wh) {
-      const group = new THREE.Group();
-      group.add(wh.mesh);
-      group.position.set(74, 0.2, 0);
-      group.userData.angle = 0;
-      const act = wh.actions['idle'] || wh.actions['walk'];
+    // 3. 🦤 大嘴鵜鶘 (掠海飛行)
+    const pelicanObj = this.instantiateModel('assets/models/birds/Pelican.glb', 1.4, { alignBottom: false });
+    if (pelicanObj) {
+      const pelicanGroup = new THREE.Group();
+      pelicanGroup.add(pelicanObj.mesh);
+      const act = pelicanObj.actions['walk'] || pelicanObj.actions['idle'];
       if (act) act.play();
-      this.whaleMesh = group;
-      return group;
+      pelicanGroup.position.set(-65, 11, 0);
+      const peliData = this.app.data?.animals?.find(a => a.id === "pelican") || { name: "大嘴鵜鶘", icon: "🦤", location: "海岸低空", dialogue: "咕嚕！在島嶼樹冠與海岸間穿梭最過癮了！" };
+      pelicanGroup.userData = {
+        type: "animal",
+        data: peliData,
+        type: "pelican",
+        radius: 68,
+        angle: Math.PI * 0.7,
+        speed: 0.0028,
+        baseY: 11
+      };
+      this.scene.add(pelicanGroup);
+      this.skyBirds.push(pelicanGroup);
     }
-    return null;
-  }
 
-  buildSeagull() {
-    const sg = this.instantiateModel('assets/models/animals/Seagull.glb', 0.65, { alignBottom: true });
-    if (sg) {
-      const group = new THREE.Group();
-      group.add(sg.mesh);
-      group.position.set(0, 26, 0);
-      const act = sg.actions['walk'] || sg.actions['idle'];
+    // 4. 🦜 彩嘴巨嘴鳥 (分島林冠滑翔)
+    const toucanObj = this.instantiateModel('assets/models/birds/Toucan.glb', 1.1, { alignBottom: false });
+    if (toucanObj) {
+      const toucanGroup = new THREE.Group();
+      toucanGroup.add(toucanObj.mesh);
+      const act = toucanObj.actions['walk'] || toucanObj.actions['idle'];
       if (act) act.play();
-      return group;
+      toucanGroup.position.set(0, 14, -38);
+      const toucanData = this.app.data?.animals?.find(a => a.id === "toucan") || { name: "彩嘴巨嘴鳥", icon: "🦜", location: "林冠滑翔", dialogue: "嘎嘎！瞧我色彩斑斕的大鳥喙，在中藥島的陽光下特別閃耀！" };
+      toucanGroup.userData = {
+        type: "animal",
+        data: toucanData,
+        type: "toucan",
+        radius: 46,
+        angle: -Math.PI * 0.4,
+        speed: 0.0042,
+        baseY: 14
+      };
+      this.scene.add(toucanGroup);
+      this.skyBirds.push(toucanGroup);
     }
-    return null;
   }
 
-  buildCat() {
-    const group = new THREE.Group();
-    const gingerMat = new THREE.MeshLambertMaterial({ color: 0xf4a261 });
-    const body = new THREE.Mesh(new THREE.SphereGeometry(0.35, 6, 6), gingerMat);
-    body.position.y = 0.32;
-    group.add(body);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 6, 6), gingerMat);
-    head.position.set(0, 0.5, 0.22);
-    group.add(head);
-    group.position.set(-4, 4.3, 5);
-    return group;
-  }
+  createMarineCreatures() {
+    this.marineCreatures = [];
+    this.whaleSpoutParticles = [];
 
-  buildTurtle() {
-    const group = new THREE.Group();
-    const shellMat = new THREE.MeshLambertMaterial({ color: 0x2d6a4f });
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0x52b788 });
-    const shell = new THREE.Mesh(new THREE.SphereGeometry(0.6, 6, 5), shellMat);
-    shell.scale.set(1.2, 0.5, 1.4);
-    shell.position.y = 0.2;
-    group.add(shell);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 5, 5), skinMat);
-    head.position.set(0, 0.15, 0.95);
-    group.add(head);
-    group.position.set(-45, -0.1, -10);
-    group.userData.swimAngle = 0;
-    return group;
-  }
+    // 1. 🐋 深海巨鯨 (外海巡航、浮出海面、向上噴射水霧微粒)
+    const whaleObj = this.instantiateModel('assets/models/animals/Whale.glb', 4.5, { alignBottom: false });
+    if (whaleObj) {
+      const whaleGroup = new THREE.Group();
+      whaleGroup.add(whaleObj.mesh);
+      const act = whaleObj.actions['idle'] || whaleObj.actions['walk'];
+      if (act) act.play();
 
-  buildDolphin() {
-    const group = new THREE.Group();
-    const dolphinMat = new THREE.MeshLambertMaterial({ color: 0x48cae4 });
-    const body = new THREE.Mesh(new THREE.ConeGeometry(0.6, 2.4, 6), dolphinMat);
-    body.rotation.x = Math.PI / 2;
-    group.add(body);
-    const fin = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.6, 4), dolphinMat);
-    fin.position.set(0, 0.45, -0.2);
-    group.add(fin);
-    group.position.set(50, -0.2, 0);
-    group.userData.leapAngle = 0;
-    return group;
+      whaleGroup.position.set(80, 0.2, 0);
+      const whaleData = this.app.data?.animals?.find(a => a.id === "whale") || { name: "深海巨鯨", icon: "🐋", location: "外海深水巡航航道", dialogue: "嗚——！浮出海面噴出高高的水花，遵守海洋浮力在大海深處悠然前行！" };
+      whaleGroup.userData = {
+        type: "animal",
+        data: whaleData,
+        type: "whale",
+        radius: 80,
+        angle: 0,
+        speed: 0.0016,
+        spoutCooldown: 0
+      };
+
+      // 噴水水霧微粒 (預建立 18 顆水花微粒)
+      const mistMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 });
+      for (let p = 0; p < 18; p++) {
+        const particle = new THREE.Mesh(new THREE.SphereGeometry(0.18, 4, 4), mistMat);
+        particle.visible = false;
+        particle.userData = {
+          active: false,
+          velY: 0,
+          velX: 0,
+          velZ: 0,
+          life: 0
+        };
+        whaleGroup.add(particle);
+        this.whaleSpoutParticles.push(particle);
+      }
+
+      this.scene.add(whaleGroup);
+      this.marineCreatures.push(whaleGroup);
+      this.whaleMesh = whaleGroup;
+    }
+
+    // 2. 🦄 獨角鯨 (外海長角破浪)
+    const narwhalObj = this.instantiateModel('assets/models/marine/Narwhal.glb', 2.8, { alignBottom: false });
+    if (narwhalObj) {
+      const narGroup = new THREE.Group();
+      narGroup.add(narwhalObj.mesh);
+      const act = narwhalObj.actions['idle'] || narwhalObj.actions['walk'];
+      if (act) act.play();
+      narGroup.position.set(0, 0.1, -68);
+      const narData = this.app.data?.animals?.find(a => a.id === "narwhal") || { name: "獨角鯨", icon: "🦄", location: "外海水域", dialogue: "哧溜！我修長的螺旋長角在碧波中破浪前行！" };
+      narGroup.userData = {
+        type: "animal",
+        data: narData,
+        type: "narwhal",
+        radius: 68,
+        angle: Math.PI * 1.5,
+        speed: 0.0022
+      };
+      this.scene.add(narGroup);
+      this.marineCreatures.push(narGroup);
+    }
+
+    // 3. 🦭 斑點海豹 (沙灘淺海交界游動與探頭)
+    const sealObj = this.instantiateModel('assets/models/marine/Seal.glb', 1.35, { alignBottom: false });
+    if (sealObj) {
+      const sealGroup = new THREE.Group();
+      sealGroup.add(sealObj.mesh);
+      const act = sealObj.actions['idle'] || sealObj.actions['walk'];
+      if (act) act.play();
+      sealGroup.position.set(-32, 0.1, 32);
+      const sealData = this.app.data?.animals?.find(a => a.id === "seal") || { name: "斑點海豹", icon: "🦭", location: "沙灘淺海交界", dialogue: "吧唧吧唧！在微涼的海水裡翻滾嬉戲，探出圓腦袋曬太陽！" };
+      sealGroup.userData = {
+        type: "animal",
+        data: sealData,
+        type: "seal",
+        radius: 34,
+        angle: Math.PI * 0.75,
+        speed: 0.003
+      };
+      this.scene.add(sealGroup);
+      this.marineCreatures.push(sealGroup);
+    }
+
+    // 4. 🐟 熱帶藍倒吊群 (淺礁珊瑚魚群)
+    const btObj = this.instantiateModel('assets/models/marine/BlueTang.glb', 0.65, { alignBottom: false });
+    if (btObj) {
+      const fishGroup = new THREE.Group();
+      for (let i = 0; i < 4; i++) {
+        const fish = SkeletonUtils.clone(btObj.mesh);
+        fish.position.set((i - 1.5) * 1.2, 0, Math.sin(i) * 0.8);
+        fishGroup.add(fish);
+      }
+      fishGroup.position.set(28, -0.05, -16);
+      fishGroup.userData = {
+        type: "bluetang",
+        radius: 28,
+        angle: -0.6,
+        speed: 0.004
+      };
+      this.scene.add(fishGroup);
+      this.marineCreatures.push(fishGroup);
+    }
+
+    // 5. 🐡 圓滾河豚 (港灣水面悠游)
+    const fuguObj = this.instantiateModel('assets/models/marine/Fugu.glb', 0.85, { alignBottom: false });
+    if (fuguObj) {
+      const fuguGroup = new THREE.Group();
+      fuguGroup.add(fuguObj.mesh);
+      fuguGroup.position.set(26, 0.1, 24);
+      const fuguData = this.app.data?.animals?.find(a => a.id === "fugu") || { name: "圓滾河豚", icon: "🐡", location: "平緩海灣", dialogue: "噗嚕嚕！鼓起圓滾滾的小肚子游水真寫意！" };
+      fuguGroup.userData = {
+        type: "animal",
+        data: fuguData,
+        type: "fugu",
+        radius: 26,
+        angle: 0.8,
+        speed: 0.0025
+      };
+      this.scene.add(fuguGroup);
+      this.marineCreatures.push(fuguGroup);
+    }
+
+    // 6. 🦈 巡弋鯊 (外海深藍背鰭巡航)
+    const sharkObj = this.instantiateModel('assets/models/marine/Shark.glb', 2.6, { alignBottom: false });
+    if (sharkObj) {
+      const sharkGroup = new THREE.Group();
+      sharkGroup.add(sharkObj.mesh);
+      const act = sharkObj.actions['idle'] || sharkObj.actions['walk'];
+      if (act) act.play();
+      sharkGroup.position.set(-74, -0.15, -40);
+      const sharkData = this.app.data?.animals?.find(a => a.id === "shark") || { name: "深海巡弋鯊", icon: "🦈", location: "外海深藍航道", dialogue: "唰——！露出尖尖的背鰭平穩巡航，守護大海秩序！" };
+      sharkGroup.userData = {
+        type: "animal",
+        data: sharkData,
+        type: "shark",
+        radius: 74,
+        angle: Math.PI * 1.2,
+        speed: 0.002
+      };
+      this.scene.add(sharkGroup);
+      this.marineCreatures.push(sharkGroup);
+    }
   }
 
   createClouds() {
@@ -1492,39 +1746,6 @@ export class SceneManager {
       cloud.userData = { angle, radius, speed: 0.0006 + Math.random() * 0.0004 };
       this.scene.add(cloud);
       this.clouds.push(cloud);
-    }
-  }
-
-  createBirdFlocks() {
-    const birdMat = new THREE.MeshBasicMaterial({ color: 0x333333, side: THREE.DoubleSide });
-    for (let f = 0; f < 2; f++) {
-      const flock = new THREE.Group();
-      for (let b = 0; b < 4; b++) {
-        const sg = this.instantiateModel('assets/models/animals/Seagull.glb', 0.65, { alignBottom: true });
-        let bird = null;
-        if (sg) {
-          bird = sg.mesh;
-          const flap = sg.actions['walk'] || sg.actions['idle'];
-          if (flap) flap.play();
-        } else {
-          bird = new THREE.Group();
-          const wingGeo = new THREE.PlaneGeometry(0.6, 0.25);
-          const w1 = new THREE.Mesh(wingGeo, birdMat);
-          w1.position.x = -0.3;
-          w1.rotation.z = 0.3;
-          bird.add(w1);
-          const w2 = new THREE.Mesh(wingGeo, birdMat);
-          w2.position.x = 0.3;
-          w2.rotation.z = -0.3;
-          bird.add(w2);
-        }
-        bird.position.set((b - 1.5) * 2.2, 0, Math.abs(b - 1.5) * 1.8);
-        flock.add(bird);
-      }
-      flock.position.set(f === 0 ? 35 : -35, 27, f === 0 ? 35 : -35);
-      flock.userData = { angle: f * Math.PI, radius: 58, speed: 0.0028 };
-      this.scene.add(flock);
-      this.birds.push(flock);
     }
   }
 
@@ -1576,6 +1797,326 @@ export class SceneManager {
     this.scene.add(rainbowGroup);
     this.rainbow = rainbowGroup;
   }
+
+  /**
+   * 全域生活感物理主循環 (人物跨島移動、物理貼合、飛鳥側傾、海洋生物浮潛)
+   */
+  updateLivingPhysics(delta, time) {
+    if (this.isReducedMotion) return;
+
+    // -------------------------------------------------------------------------
+    // 1. 人物角色 (NPC) 物理與跨島導航
+    // -------------------------------------------------------------------------
+    const branchIslandIds = ["island-01", "island-02", "island-03", "island-04"];
+
+    this.npcs.forEach(npc => {
+      const u = npc.userData;
+
+      // 夜間非輪值人員待機
+      if (this.timeOfDay === "night" && !u.isCourier && u.data.id !== "npc-01") {
+        return;
+      }
+
+      // A. 待機計時中
+      if (u.pauseTimer > 0) {
+        u.pauseTimer -= delta;
+        if (u.currentAnimState !== 'idle' && u.actions) {
+          const idleAct = u.actions['idle'] || u.actions['Idle'];
+          const walkAct = u.actions['walk'] || u.actions['Walk'];
+          if (idleAct && walkAct) {
+            walkAct.fadeOut(0.25);
+            idleAct.reset().fadeIn(0.25).play();
+          }
+          u.currentAnimState = 'idle';
+        }
+        if (npc.leftArm) npc.leftArm.rotation.x = 0;
+        if (npc.rightArm) npc.rightArm.rotation.x = 0;
+        return;
+      }
+
+      // B. 跨島過橋中 (CROSSING_BRIDGE)
+      if (u.state === "CROSSING_BRIDGE") {
+        const b = this.bridgePaths[u.bridgeId];
+        if (!b) {
+          u.state = "PATROL";
+          return;
+        }
+
+        const step = (delta * 1.7) / b.dist; // 約 1.7 m/s 穩健步速
+        if (!u.bridgeReverse) {
+          u.bridgeProgress += step;
+        } else {
+          u.bridgeProgress -= step;
+        }
+
+        const t = Math.max(0, Math.min(1, u.bridgeProgress));
+        const pos = new THREE.Vector3().lerpVectors(b.pStart, b.pEnd, t);
+        pos.y = b.pStart.y + (b.pEnd.y - b.pStart.y) * t + b.archHeight * Math.sin(t * Math.PI);
+        npc.position.copy(pos);
+
+        // 旋轉對齊橋樑行進方向
+        const forward = b.pEnd.clone().sub(b.pStart).normalize();
+        if (u.bridgeReverse) forward.negate();
+        const targetRot = Math.atan2(forward.x, forward.z);
+        npc.rotation.y = targetRot;
+
+        // 切換 Walk 動畫
+        if (u.currentAnimState !== 'walk' && u.actions) {
+          const idleAct = u.actions['idle'] || u.actions['Idle'];
+          const walkAct = u.actions['walk'] || u.actions['Walk'];
+          if (idleAct && walkAct) {
+            idleAct.fadeOut(0.2);
+            walkAct.reset().fadeIn(0.2).play();
+          }
+          u.currentAnimState = 'walk';
+        }
+
+        // 抵達橋頭對岸
+        if ((!u.bridgeReverse && u.bridgeProgress >= 1) || (u.bridgeReverse && u.bridgeProgress <= 0)) {
+          u.state = "PATROL";
+          u.currentIslandId = u.targetIslandId;
+          u.patrolCount = 0;
+          u.pauseTimer = 2.0;
+
+          const curDef = this.islandDefs.find(d => d.id === u.currentIslandId) || this.islandDefs[0];
+          const a = Math.random() * Math.PI * 2;
+          const r = Math.random() * (curDef.radius * 0.45);
+          u.targetPos.set(curDef.pos.x + Math.cos(a) * r, 0, curDef.pos.z + Math.sin(a) * r);
+          u.targetPos.y = this.getTerrainHeight(u.targetPos.x, u.targetPos.z);
+        }
+        return;
+      }
+
+      // C. 走向橋頭準備過橋 (TO_BRIDGE)
+      if (u.state === "TO_BRIDGE") {
+        const b = this.bridgePaths[u.bridgeId];
+        const bridgeHead = u.bridgeReverse ? b.pEnd : b.pStart;
+        const distToHead = Math.hypot(npc.position.x - bridgeHead.x, npc.position.z - bridgeHead.z);
+
+        if (distToHead < 1.1) {
+          u.state = "CROSSING_BRIDGE";
+          u.bridgeProgress = u.bridgeReverse ? 1 : 0;
+          return;
+        }
+
+        // 走向橋頭
+        const dir = bridgeHead.clone().sub(npc.position);
+        dir.y = 0;
+        dir.normalize();
+        npc.position.addScaledVector(dir, u.walkSpeed);
+        npc.position.y = this.getTerrainHeight(npc.position.x, npc.position.z);
+
+        const targetAngle = Math.atan2(dir.x, dir.z);
+        npc.rotation.y = THREE.MathUtils.lerp(npc.rotation.y, targetAngle, delta * u.turnSpeed);
+        return;
+      }
+
+      // D. 島內漫步巡邏 (PATROL)
+      const dir = u.targetPos.clone().sub(npc.position);
+      dir.y = 0;
+      const dist = dir.length();
+
+      if (dist < 0.4) {
+        u.pauseTimer = 1.8 + Math.random() * 2.2;
+        u.patrolCount++;
+
+        // 非島主角色巡邏累積次數後，觸發跨島過橋行程
+        if (!u.isHost && u.patrolCount >= u.patrolLimitBeforeTrip) {
+          let nextIsl = null;
+          if (u.currentIslandId === "island-center") {
+            // 從中央島前往任一分島
+            nextIsl = branchIslandIds[Math.floor(Math.random() * branchIslandIds.length)];
+            u.bridgeId = nextIsl;
+            u.bridgeReverse = false;
+          } else {
+            // 從分島前往中央島
+            nextIsl = "island-center";
+            u.bridgeId = u.currentIslandId;
+            u.bridgeReverse = true;
+          }
+
+          u.targetIslandId = nextIsl;
+          u.state = "TO_BRIDGE";
+          return;
+        }
+
+        // 挑選島內下一個漫步巡邏點
+        const curDef = this.islandDefs.find(d => d.id === u.currentIslandId) || this.islandDefs[0];
+        const maxR = u.isHost ? 3.8 : (curDef.radius * 0.48);
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.random() * maxR;
+        u.targetPos.set(curDef.pos.x + Math.cos(a) * r, 0, curDef.pos.z + Math.sin(a) * r);
+        u.targetPos.y = this.getTerrainHeight(u.targetPos.x, u.targetPos.z);
+      } else {
+        dir.normalize();
+        npc.position.addScaledVector(dir, u.walkSpeed);
+        // 地貌真實物理高度貼合
+        npc.position.y = this.getTerrainHeight(npc.position.x, npc.position.z);
+
+        // 平滑轉向面朝行進方向
+        const targetAngle = Math.atan2(dir.x, dir.z);
+        npc.rotation.y = THREE.MathUtils.lerp(npc.rotation.y, targetAngle, delta * u.turnSpeed);
+
+        // 切換 Walk 動畫
+        if (u.currentAnimState !== 'walk' && u.actions) {
+          const idleAct = u.actions['idle'] || u.actions['Idle'];
+          const walkAct = u.actions['walk'] || u.actions['Walk'];
+          if (idleAct && walkAct) {
+            idleAct.fadeOut(0.2);
+            walkAct.reset().fadeIn(0.2).play();
+          }
+          u.currentAnimState = 'walk';
+        }
+
+        const swing = Math.sin(time * 8) * 0.5;
+        if (npc.leftArm) npc.leftArm.rotation.x = swing;
+        if (npc.rightArm) npc.rightArm.rotation.x = -swing;
+        if (npc.leftLeg) npc.leftLeg.rotation.x = -swing;
+        if (npc.rightLeg) npc.rightLeg.rotation.x = swing;
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // 2. 陸地動物物理更新
+    // -------------------------------------------------------------------------
+    this.animals.forEach(ani => {
+      const u = ani.userData;
+      if (u.pauseTimer > 0) {
+        u.pauseTimer -= delta;
+        return;
+      }
+
+      const dir = u.targetPos.clone().sub(ani.position);
+      dir.y = 0;
+      const dist = dir.length();
+
+      if (dist < 0.3) {
+        u.pauseTimer = 1.5 + Math.random() * 2.5;
+        const islDef = this.islandDefs.find(d => d.id === u.islandId) || this.islandDefs[0];
+        const a = Math.random() * Math.PI * 2;
+        const r = 2.0 + Math.random() * (islDef.radius * 0.42);
+        u.targetPos.set(islDef.pos.x + Math.cos(a) * r, 0, islDef.pos.z + Math.sin(a) * r);
+      } else {
+        dir.normalize();
+        ani.position.addScaledVector(dir, u.walkSpeed);
+
+        let groundY = this.getTerrainHeight(ani.position.x, ani.position.z);
+        if (u.isHopper) {
+          // 野兔與幼兔跳躍拋物線
+          groundY += Math.abs(Math.sin(time * 7)) * 0.28;
+        }
+        ani.position.y = groundY;
+
+        const targetRot = Math.atan2(dir.x, dir.z);
+        ani.rotation.y = THREE.MathUtils.lerp(ani.rotation.y, targetRot, delta * u.turnSpeed);
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // 3. 天空飛鳥空氣動力學更新
+    // -------------------------------------------------------------------------
+    const isNight = this.timeOfDay === "night";
+    this.skyBirds.forEach(bird => {
+      bird.visible = !isNight;
+      if (isNight) return;
+
+      const u = bird.userData;
+      u.angle += u.speed;
+      bird.position.x = Math.cos(u.angle) * u.radius;
+      bird.position.z = Math.sin(u.angle) * u.radius;
+
+      // 浮力高度微幅上下波動
+      const wave = Math.sin(time * 2.2 + u.angle * 3) * 0.8;
+      bird.position.y = u.baseY + wave;
+
+      // 前向注視與轉向側傾 (Bank/Roll)
+      bird.lookAt(
+        Math.cos(u.angle + 0.1) * u.radius,
+        bird.position.y,
+        Math.sin(u.angle + 0.1) * u.radius
+      );
+
+      if (u.type === "eagle") {
+        bird.rotation.z = -0.32; // 老鷹盤旋側傾角
+      } else {
+        bird.rotation.z = Math.sin(time * 3) * 0.08;
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // 4. 海洋生物浮力流體力學更新
+    // -------------------------------------------------------------------------
+    this.marineCreatures.forEach(marine => {
+      const u = marine.userData;
+      u.angle += u.speed;
+      marine.position.x = Math.cos(u.angle) * u.radius;
+      marine.position.z = Math.sin(u.angle) * u.radius;
+
+      if (u.type === "whale") {
+        // 巨鯨 18 秒浮潛循環
+        const cycle = time % 18;
+        let targetY = -0.6;
+        let pitch = 0;
+
+        if (cycle < 7) {
+          // 浮出海面換氣
+          targetY = 0.45;
+          pitch = Math.sin((cycle / 7) * Math.PI) * 0.08;
+
+          // 水霧噴發微粒更新
+          if (cycle > 1.2 && cycle < 4.5 && this.whaleSpoutParticles.length > 0) {
+            this.whaleSpoutParticles.forEach((sp, i) => {
+              if (!sp.visible) {
+                sp.visible = true;
+                sp.position.set(0, 1.8, 0.4);
+                sp.userData.velY = 2.4 + Math.random() * 2.2;
+                sp.userData.velX = (Math.random() - 0.5) * 0.8;
+                sp.userData.velZ = (Math.random() - 0.5) * 0.8;
+              }
+              sp.position.y += delta * sp.userData.velY;
+              sp.position.x += delta * sp.userData.velX;
+              sp.position.z += delta * sp.userData.velZ;
+              sp.userData.velY -= delta * 3.8;
+              if (sp.position.y > 4.6 || sp.position.y < 1.0) {
+                sp.visible = false;
+              }
+            });
+          }
+        } else {
+          // 下潛深入海中
+          targetY = -0.85;
+          pitch = -0.14;
+          if (this.whaleSpoutParticles.length > 0) {
+            this.whaleSpoutParticles.forEach(sp => { sp.visible = false; });
+          }
+        }
+
+        marine.position.y = THREE.MathUtils.lerp(marine.position.y, targetY, delta * 2.0);
+        marine.lookAt(
+          Math.cos(u.angle + 0.1) * u.radius,
+          marine.position.y,
+          Math.sin(u.angle + 0.1) * u.radius
+        );
+        marine.rotation.x = pitch;
+        marine.rotation.z = Math.sin(time * 2.5) * 0.05;
+      } else if (u.type === "narwhal") {
+        marine.position.y = 0.05 + Math.sin(time * 2) * 0.25;
+        marine.lookAt(Math.cos(u.angle + 0.1) * u.radius, marine.position.y, Math.sin(u.angle + 0.1) * u.radius);
+        marine.rotation.z = Math.sin(time * 3) * 0.08;
+      } else if (u.type === "seal") {
+        marine.position.y = 0.1 + Math.sin(time * 2.5) * 0.18;
+        marine.lookAt(Math.cos(u.angle + 0.1) * u.radius, marine.position.y, Math.sin(u.angle + 0.1) * u.radius);
+      } else if (u.type === "shark") {
+        marine.position.y = -0.15 + Math.sin(time * 1.8) * 0.06;
+        marine.lookAt(Math.cos(u.angle + 0.1) * u.radius, marine.position.y, Math.sin(u.angle + 0.1) * u.radius);
+        marine.rotation.z = Math.sin(time * 2) * 0.04;
+      } else {
+        marine.position.y = 0.0 + Math.sin(time * 2.8) * 0.12;
+        marine.lookAt(Math.cos(u.angle + 0.1) * u.radius, marine.position.y, Math.sin(u.angle + 0.1) * u.radius);
+      }
+    });
+  }
+
 
   /**
    * 電影史詩開場運鏡 (4~6 秒俯衝、環繞群島半圈)
@@ -1753,10 +2294,12 @@ export class SceneManager {
     });
 
     // 拖拉防誤觸判定狀態
+    this.isPointerDown = false;
     this.pointerDownPos = { x: 0, y: 0, time: 0 };
     this.isDragging = false;
 
     this.renderer.domElement.addEventListener('pointerdown', (e) => {
+      this.isPointerDown = true;
       this.pointerDownPos.x = e.clientX;
       this.pointerDownPos.y = e.clientY;
       this.pointerDownPos.time = performance.now();
@@ -1764,9 +2307,11 @@ export class SceneManager {
     });
 
     this.renderer.domElement.addEventListener('pointermove', (e) => {
-      const dist = Math.hypot(e.clientX - this.pointerDownPos.x, e.clientY - this.pointerDownPos.y);
-      if (dist > 6) {
-        this.isDragging = true;
+      if (this.isPointerDown) {
+        const dist = Math.hypot(e.clientX - this.pointerDownPos.x, e.clientY - this.pointerDownPos.y);
+        if (dist > 6) {
+          this.isDragging = true;
+        }
       }
 
       // 游標懸停回饋：當游標移至人物、建築、動物或貝殼時顯示 pointer 樣式
@@ -1795,6 +2340,8 @@ export class SceneManager {
 
     // 點擊畫布互動 (精準判定：拖拉旋轉視角時絕不觸發，僅點擊人物或建築時開啟介紹框)
     this.renderer.domElement.addEventListener('pointerup', (e) => {
+      this.isPointerDown = false;
+
       if (this.isCinemaActive) {
         this.skipCinema();
         return;
@@ -1831,48 +2378,69 @@ export class SceneManager {
     const intersects = this.raycaster.intersectObjects(this.scene.children, true);
 
     if (intersects.length > 0) {
-      // 尋找最近的有意義物件
+      // 收集所有被射線命中的有意義互動實體，依生活感互動優先級判定 (避免大殿建築遮擋門口站立的 NPC)
+      const priorityMap = {
+        "shell": 5,
+        "npc": 4,
+        "animal": 3,
+        "building": 2,
+        "terrain": 1
+      };
+
+      let bestTarget = null;
+      let highestPriority = -1;
+
       for (const hit of intersects) {
         let obj = hit.object;
         while (obj && obj !== this.scene) {
-          if (obj.userData) {
-            // 1. 拾取海灘貝殼
-            if (obj.userData.type === "shell") {
-              this.app.livingWorld.pickupShell(obj);
-              return;
+          if (obj.userData && obj.userData.type && priorityMap[obj.userData.type] !== undefined) {
+            const prio = priorityMap[obj.userData.type];
+            if (prio > highestPriority) {
+              highestPriority = prio;
+              bestTarget = obj;
             }
-            // 2. 點擊島上人物 (NPC)：開啟對話泡泡 + 展開右側介紹框
-            if (obj.userData.type === "npc") {
-              const targetNpc = obj.userData.parentNpc || obj;
-              const npcData = targetNpc.userData?.data || obj.userData.data;
-              const islandId = targetNpc.userData?.islandId || npcData?.islandId;
-              if (islandId) {
-                this.focusIsland(islandId);
-              }
-              this.app.livingWorld.openNpcDialogue(npcData, targetNpc);
-              return;
-            }
-            // 3. 點擊島上建築 (Building / Landmark)：展開右側介紹框
-            if (obj.userData.type === "building") {
-              if (obj.userData.islandId) {
-                this.focusIsland(obj.userData.islandId);
-              }
-              return;
-            }
-            // 4. 點擊動物：開趣味對話泡泡 (不干擾右側抽屜)
-            if (obj.userData.type === "animal") {
-              const targetAnimal = obj.userData.parentAnimal || obj;
-              const data = targetAnimal.userData?.data || obj.userData.data;
-              this.app.livingWorld.openAnimalDialogue(data, targetAnimal);
-              return;
-            }
-            // 5. 點擊島嶼地貌 (草地/台地)：平滑飛近並置中該島看細節 (純視覺特寫，不強制開抽屜遮擋視野)
-            if (obj.userData.type === "terrain" && obj.userData.islandId) {
-              this.focusIsland(obj.userData.islandId, false);
-              return;
-            }
+            break;
           }
           obj = obj.parent;
+        }
+      }
+
+      if (bestTarget && bestTarget.userData) {
+        const u = bestTarget.userData;
+        // 1. 拾取海灘貝殼
+        if (u.type === "shell") {
+          this.app.livingWorld.pickupShell(bestTarget);
+          return;
+        }
+        // 2. 點擊島上人物 (NPC)：開啟對話泡泡 + 展開右側介紹框
+        if (u.type === "npc") {
+          const targetNpc = u.parentNpc || bestTarget;
+          const npcData = targetNpc.userData?.data || u.data;
+          const islandId = targetNpc.userData?.islandId || npcData?.islandId;
+          if (islandId) {
+            this.focusIsland(islandId);
+          }
+          this.app.livingWorld.openNpcDialogue(npcData, targetNpc);
+          return;
+        }
+        // 3. 點擊動物：開趣味對話泡泡 (不干擾右側抽屜)
+        if (u.type === "animal") {
+          const targetAnimal = u.parentAnimal || bestTarget;
+          const data = targetAnimal.userData?.data || u.data;
+          this.app.livingWorld.openAnimalDialogue(data, targetAnimal);
+          return;
+        }
+        // 4. 點擊島上建築 (Building / Landmark)：展開右側介紹框
+        if (u.type === "building") {
+          if (u.islandId) {
+            this.focusIsland(u.islandId);
+          }
+          return;
+        }
+        // 5. 點擊島嶼地貌 (草地/台地)：平滑飛近並置中該島看細節 (純視覺特寫，不強制開抽屜遮擋視野)
+        if (u.type === "terrain" && u.islandId) {
+          this.focusIsland(u.islandId, false);
+          return;
         }
       }
     }
@@ -1993,138 +2561,8 @@ export class SceneManager {
       });
     }
 
-    // 鳥群翱翔 (夜晚隱藏)
-    if (!this.isReducedMotion && this.birds.length > 0) {
-      const isNight = this.timeOfDay === "night";
-      this.birds.forEach(flock => {
-        flock.visible = !isNight;
-        if (!isNight) {
-          flock.userData.angle += flock.userData.speed;
-          flock.position.x = Math.cos(flock.userData.angle) * flock.userData.radius;
-          flock.position.z = Math.sin(flock.userData.angle) * flock.userData.radius;
-          flock.lookAt(
-            Math.cos(flock.userData.angle + 0.1) * flock.userData.radius,
-            flock.position.y,
-            Math.sin(flock.userData.angle + 0.1) * flock.userData.radius
-          );
-        }
-      });
-    }
-
-    // 帆船航行
-    if (!this.isReducedMotion) {
-      this.boats.forEach(b => {
-        b.userData.angle += b.userData.speed;
-        b.position.x = Math.cos(b.userData.angle) * b.userData.radius;
-        b.position.z = Math.sin(b.userData.angle) * b.userData.radius;
-        b.lookAt(
-          Math.cos(b.userData.angle + 0.1) * b.userData.radius,
-          b.position.y,
-          Math.sin(b.userData.angle + 0.1) * b.userData.radius
-        );
-        b.rotation.z = Math.sin(time * 2) * 0.08; // 隨浪搖晃
-      });
-    }
-
-    // 動物動作 (巨鯨巡航、海龜游動、海豚跳躍)
-    if (!this.isReducedMotion) {
-      // 巨鯨在外海悠泳巡航
-      if (this.whaleMesh) {
-        this.whaleMesh.userData.angle += 0.0012;
-        const r = 76;
-        this.whaleMesh.position.x = Math.cos(this.whaleMesh.userData.angle) * r;
-        this.whaleMesh.position.z = Math.sin(this.whaleMesh.userData.angle) * r;
-        this.whaleMesh.position.y = 0.1 + Math.sin(time * 1.5) * 0.35;
-        this.whaleMesh.lookAt(
-          Math.cos(this.whaleMesh.userData.angle + 0.1) * r,
-          this.whaleMesh.position.y,
-          Math.sin(this.whaleMesh.userData.angle + 0.1) * r
-        );
-        this.whaleMesh.rotation.z = Math.sin(time * 2) * 0.04;
-      }
-
-      this.animals.forEach(ani => {
-        if (ani.userData.data.id === "turtle") {
-          ani.userData.swimAngle += 0.005;
-          ani.position.x = Math.cos(ani.userData.swimAngle) * 48;
-          ani.position.z = Math.sin(ani.userData.swimAngle) * 48;
-          ani.lookAt(Math.cos(ani.userData.swimAngle + 0.1) * 48, ani.position.y, Math.sin(ani.userData.swimAngle + 0.1) * 48);
-        } else if (ani.userData.data.id === "dolphin") {
-          ani.userData.leapAngle += 0.01;
-          ani.position.x = Math.cos(ani.userData.leapAngle) * 52;
-          ani.position.z = Math.sin(ani.userData.leapAngle) * 52;
-          ani.position.y = -0.2 + Math.max(0, Math.sin(time * 3)) * 2.2;
-          ani.rotation.x = Math.sin(time * 3) * 0.4;
-        }
-      });
-    }
-
-    // NPC 居民走動與手腳擺動
-    if (!this.isReducedMotion) {
-      this.npcs.forEach(npc => {
-        // 夜間部分島民休息
-        if (this.timeOfDay === "night" && !npc.userData.isCourier && npc.userData.data.id !== "npc-01") {
-          return;
-        }
-
-        // 散步與巡邏路徑
-        if (npc.userData.pauseTimer > 0) {
-          npc.userData.pauseTimer -= delta;
-
-          // 切換為 Idle 動畫
-          if (npc.userData.currentAnimState !== 'idle' && npc.userData.actions) {
-            const idleAct = npc.userData.actions['idle'] || npc.userData.actions['Idle'];
-            const walkAct = npc.userData.actions['walk'] || npc.userData.actions['Walk'];
-            if (idleAct && walkAct) {
-              walkAct.fadeOut(0.3);
-              idleAct.reset().fadeIn(0.3).play();
-            }
-            npc.userData.currentAnimState = 'idle';
-          }
-
-          if (npc.leftArm) npc.leftArm.rotation.x = 0;
-          if (npc.rightArm) npc.rightArm.rotation.x = 0;
-        } else {
-          const dir = npc.userData.targetPos.clone().sub(npc.position);
-          dir.y = 0;
-          const dist = dir.length();
-          if (dist < 0.4) {
-            // 抵達目標點，停留 1.5~3 秒
-            npc.userData.pauseTimer = 1.5 + Math.random() * 2;
-            const islDef = this.islandDefs.find(d => d.id === npc.userData.islandId) || this.islandDefs[0];
-            const a = Math.random() * Math.PI * 2;
-            const r = Math.random() * (islDef.radius * 0.52);
-            npc.userData.targetPos.set(
-              islDef.pos.x + Math.cos(a) * r,
-              npc.position.y,
-              islDef.pos.z + Math.sin(a) * r
-            );
-          } else {
-            dir.normalize();
-            npc.position.addScaledVector(dir, npc.userData.walkSpeed);
-            npc.lookAt(npc.position.clone().add(dir));
-
-            // 切換為 Walk 動畫
-            if (npc.userData.currentAnimState !== 'walk' && npc.userData.actions) {
-              const idleAct = npc.userData.actions['idle'] || npc.userData.actions['Idle'];
-              const walkAct = npc.userData.actions['walk'] || npc.userData.actions['Walk'];
-              if (idleAct && walkAct) {
-                idleAct.fadeOut(0.2);
-                walkAct.reset().fadeIn(0.2).play();
-              }
-              npc.userData.currentAnimState = 'walk';
-            }
-
-            // 手腳擺動動畫 (後備幾何模型相容)
-            const swing = Math.sin(time * 8) * 0.5;
-            if (npc.leftArm) npc.leftArm.rotation.x = swing;
-            if (npc.rightArm) npc.rightArm.rotation.x = -swing;
-            if (npc.leftLeg) npc.leftLeg.rotation.x = -swing;
-            if (npc.rightLeg) npc.rightLeg.rotation.x = swing;
-          }
-        }
-      });
-    }
+    // 全域生活感物理主循環 (人物跨島過橋移動、物理地貌高度貼合、飛鳥側傾翱翔、海洋生物浮潛)
+    this.updateLivingPhysics(delta, time);
 
     // 更新貝殼重生計時
     this.app.livingWorld.updateShellCooldowns();
